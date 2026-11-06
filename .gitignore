@@ -10,3 +10,6 @@ out/
 
 # Hệ điều hành
 .DS_Store
+
+# File tạm của Python khi chạy script trong skill
+__pycache__/

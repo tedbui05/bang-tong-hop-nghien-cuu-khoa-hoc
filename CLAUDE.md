@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dự án chưa có code. Khi đã tạo dự án, hãy bổ sung vào đây các lệnh thật (chạy, build, lint, test, chạy một test) và kiến trúc thật.
 
+## Thiết kế giao diện
+
+Khi thiết kế giao diện, ưu tiên skill `ui-ux-pro-max` để chọn màu, phông và bố cục. Nếu `frontend-design` hướng dẫn khác ở ba việc này thì theo `ui-ux-pro-max`.
+
+Dù skill nào đề xuất gì, luôn giữ các nguyên tắc đã chốt:
+
+- **Dễ đọc lâu:** sinh viên đọc bảng và câu trích trong thời gian dài, nên ưu tiên chữ rõ, đủ tương phản, không dùng hiệu ứng làm mỏi mắt.
+- **Đủ dấu tiếng Việt:** chỉ dùng phông có bộ chữ tiếng Việt. Kiểm tra cột `Subsets` có `vietnamese`, rồi xem thử chữ có dấu trên màn hình. Phông skill gợi ý có thể thiếu bộ chữ này.
+- **Phân biệt chữ bài báo với chữ AI:** chữ lấy từ bài báo và lời của AI phải nhìn khác nhau rõ ràng, người đọc biết ngay đâu là câu gốc.
+
+Coi kết quả của skill là gợi ý, không phải quy tắc của dự án. Skill này cài từ `ui-ux-pro-max-cli` 2.15.0 và chỉ giữ skill chính. Không chạy lại `uipro init` hay `uipro update` trong dự án: bộ cài sẽ thêm 6 skill phụ, trong đó skill `design` tự đọc file biến môi trường để lấy `GEMINI_API_KEY`.
+
 ## Sản phẩm
 
 Web app giúp sinh viên làm khóa luận khỏi phải tự chép thông tin từ bài báo vào Excel, việc vừa mất thời gian vừa dễ hiểu sai.
