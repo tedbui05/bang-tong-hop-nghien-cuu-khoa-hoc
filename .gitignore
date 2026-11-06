@@ -1,0 +1,12 @@
+# Biến môi trường và API key
+.env
+.env.*
+!.env.example
+
+# Next.js và thư viện cài đặt
+node_modules/
+.next/
+out/
+
+# Hệ điều hành
+.DS_Store
