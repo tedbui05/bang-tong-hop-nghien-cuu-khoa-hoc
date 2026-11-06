@@ -12,10 +12,20 @@ Tìm lỗi thật có thể xảy ra khi chạy, ưu tiên theo thứ tự sau.
 
 **1. Kiểm tra câu trích dẫn**
 
+Mỗi khi soát phần này, đọc `.claude/skills/citation-check/SKILL.md` trước và đối chiếu code với file đó.
+
 - Việc kiểm tra phải là code thường, không có lời gọi AI nào trong đường đi của nó.
 - Phải so với bản gốc của câu trích, không dùng bản dịch tiếng Việt.
-- Phải tìm trên toàn bài và đúng cả 4 trường hợp: đúng trang AI ghi, có ở đúng một trang khác (tự sửa số trang và hiện nhãn "đã sửa số trang"), có ở nhiều trang ("cần kiểm tra"), không có ở đâu ("cần kiểm tra").
-- Tìm các trường hợp làm kết quả sai: xuống dòng, gạch nối cuối dòng, khoảng trắng thừa, câu trích nằm vắt qua hai trang, câu trích rỗng hoặc quá ngắn nên khớp nhầm.
+- Phải chuẩn hóa bằng NFKC cho cả câu trích và văn bản bài.
+- Phải tìm trong từng trang và ở chỗ nối giữa cuối trang này với đầu trang sau. Câu vắt qua hai trang tính là trang bắt đầu của câu, và không được đếm trùng.
+- Phải đúng các kết quả sau:
+  - Chỉ có ở trang AI ghi: đạt.
+  - Chỉ có ở đúng một trang khác: tự sửa số trang và hiện nhãn "đã sửa số trang".
+  - Có ở nhiều trang: "cần kiểm tra".
+  - Không có ở đâu: "cần kiểm tra".
+- Câu dưới 15 ký tự sau chuẩn hóa luôn là "cần kiểm tra", dù tìm thấy ở đâu. Số 15 là con số tạm, sẽ chỉnh sau buổi thử thật.
+- Ô không có thông tin phải ghi "không tìm thấy", để trống câu trích và số trang, bỏ qua bước kiểm tra, không tính là "cần kiểm tra".
+- Tìm các trường hợp làm kết quả sai: xuống dòng, gạch nối cuối dòng hoặc cuối trang, khoảng trắng thừa, chữ dính như "fi", câu trích rỗng ở ô không phải "không tìm thấy".
 - Khi kiểm tra bị lỗi giữa chừng, ô phải là "cần kiểm tra", không được coi là đạt.
 
 **2. Giữ API key an toàn**
