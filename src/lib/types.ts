@@ -55,6 +55,8 @@ export type TableColumn = {
 export type SheetTable = {
   id: string;
   name: string;
+  // Một câu ngắn hiện trên thanh tiêu đề của bảng.
+  description?: string;
   columns: TableColumn[];
   papers: SavedPaper[];
 };

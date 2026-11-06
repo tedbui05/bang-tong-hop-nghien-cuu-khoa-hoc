@@ -1,6 +1,8 @@
 /* Bảng tổng hợp: phần nhìn đè lên kiểu mặc định của Tabulator */
 .sheet-frame {
   position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .sheet-loading {
@@ -13,10 +15,9 @@
 
 .sheet-host {
   --sheet-zoom: 1;
-  height: max(320px, calc(100dvh - 412px));
+  position: absolute;
+  inset: 0;
   background: var(--surface);
-  border: 1px solid var(--sheet-line);
-  border-radius: 0 0 var(--radius) var(--radius);
   overflow: hidden;
 }
 
@@ -30,21 +31,23 @@
   border: 0;
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: calc(14px * var(--sheet-zoom));
-  line-height: 1.55;
+  font-size: calc(var(--sheet-font-size) * var(--sheet-zoom));
+  font-variant-numeric: tabular-nums;
+  line-height: calc(var(--sheet-line-height) * var(--sheet-zoom));
 }
 
 /* Tiêu đề: hàng chữ cái A, B, C ở trên, tên cột đậm ở dưới */
 .sheet-host .tabulator .tabulator-header {
   background: var(--sheet-head);
-  border-bottom: 2px solid var(--line-strong);
-  color: var(--ink);
+  border-bottom: 2px solid var(--sheet-head);
+  color: var(--on-sheet-head);
   font-weight: 600;
 }
 
 .sheet-host .tabulator .tabulator-header .tabulator-col {
   background: var(--sheet-head);
-  border-right: 1px solid var(--sheet-line);
+  border-right: 1px solid var(--sheet-line-strong);
+  color: var(--on-sheet-head);
 }
 
 .sheet-host .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
@@ -64,9 +67,9 @@
   display: block;
   padding: 2px 0;
   background: var(--sheet-letter);
-  border-bottom: 1px solid var(--sheet-line);
-  color: var(--ink-soft);
-  font-size: calc(12px * var(--sheet-zoom));
+  border-bottom: 1px solid var(--sheet-line-strong);
+  color: var(--on-sheet-letter);
+  font-size: calc(var(--sheet-small-size) * var(--sheet-zoom));
   font-weight: 500;
   text-align: center;
 }
@@ -77,23 +80,27 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: calc(8px * var(--sheet-zoom)) 8px calc(8px * var(--sheet-zoom)) 12px;
+  padding: calc(var(--sheet-pad-y) * var(--sheet-zoom)) 8px calc(var(--sheet-pad-y) * var(--sheet-zoom)) var(--sheet-pad-x);
   background: transparent;
   border: 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
-  font-size: calc(14px * var(--sheet-zoom));
+  font-size: calc(var(--sheet-font-size) * var(--sheet-zoom));
   font-weight: 600;
   text-align: left;
 }
 
 .sheet-head__title:hover {
-  background: #e3e7ea;
+  background: var(--sheet-head-hover);
+}
+
+.sheet-col--num .sheet-head__name {
+  text-align: right;
 }
 
 .sheet-head__title:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--on-sheet-head);
   outline-offset: -2px;
 }
 
@@ -108,7 +115,7 @@
 /* Dấu cạnh tên cột: mũi tên mở menu, chiều sắp xếp, dấu đang lọc */
 .sheet-head__marks {
   flex: none;
-  color: var(--ink-soft);
+  color: var(--on-sheet-letter);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -120,34 +127,37 @@
 
 .tabulator-col[data-sort="asc"] .sheet-head__marks::before {
   content: "↑ ";
-  color: var(--accent);
+  color: var(--on-sheet-head);
 }
 
 .tabulator-col[data-sort="desc"] .sheet-head__marks::before {
   content: "↓ ";
-  color: var(--accent);
+  color: var(--on-sheet-head);
 }
 
 .sheet-col--filtered .sheet-head__marks::after {
   content: "lọc ▾";
-  color: var(--accent);
+  color: var(--on-sheet-head);
 }
 
 /* Ô: đường kẻ rõ giữa mọi hàng và cột, chữ không dính vào đường kẻ */
 .sheet-host .tabulator-row {
-  min-height: calc(40px * var(--sheet-zoom));
+  min-height: calc(var(--sheet-row-height) * var(--sheet-zoom));
   background: var(--surface);
-  border-bottom: 1px solid var(--sheet-line);
+  border-bottom: 0;
 }
 
-.sheet-host .tabulator-row.tabulator-row-even {
-  background: var(--surface);
+/* Hàng xen kẽ màu nhạt; ô cố định phải có nền đặc để không lộ chữ khi cuộn ngang */
+.sheet-host .tabulator-row.tabulator-row-even,
+.sheet-host .tabulator-row.tabulator-row-even .tabulator-cell {
+  background: var(--sheet-zebra);
 }
 
 .sheet-host .tabulator-row .tabulator-cell {
-  padding: calc(9px * var(--sheet-zoom)) calc(12px * var(--sheet-zoom));
+  padding: calc(var(--sheet-pad-y) * var(--sheet-zoom)) calc(var(--sheet-pad-x) * var(--sheet-zoom));
   background: var(--surface);
   border-right: 1px solid var(--sheet-line);
+  border-bottom: 1px solid var(--sheet-line);
   white-space: nowrap;
 }
 
@@ -157,27 +167,44 @@
   background: var(--sheet-hover);
 }
 
+.sheet-host .tabulator-row .tabulator-cell.sheet-st--fix,
+.sheet-host .tabulator-row:hover .tabulator-cell.sheet-st--fix {
+  background: var(--fix-bg);
+}
+
+.sheet-host .tabulator-row .tabulator-cell.sheet-st--warn,
+.sheet-host .tabulator-row:hover .tabulator-cell.sheet-st--warn {
+  background: var(--warn-bg);
+}
+
+.sheet-host .tabulator-row .tabulator-cell.sheet-st--none,
+.sheet-host .tabulator-row:hover .tabulator-cell.sheet-st--none {
+  background: var(--none-bg);
+}
+
 .sheet-host .tabulator-row:hover .tabulator-cell {
   background: var(--sheet-hover);
 }
 
 /* Cột số thứ tự */
-.sheet-host .tabulator .tabulator-header .tabulator-col.sheet-number,
+.sheet-host .tabulator .tabulator-header .tabulator-col.sheet-number {
+  background: var(--sheet-head);
+}
+
 .sheet-host .tabulator-row .tabulator-cell.sheet-number,
 .sheet-host .tabulator-row:hover .tabulator-cell.sheet-number {
   padding-right: 0;
   padding-left: 0;
-  background: var(--sheet-head);
+  background: var(--sheet-number-bg);
   color: var(--ink-soft);
-  font-size: calc(12px * var(--sheet-zoom));
-  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--sheet-small-size) * var(--sheet-zoom));
   text-align: center;
 }
 
 /* Cột tên bài cố định: đường kẻ đậm hơn để thấy ranh giới khi cuộn */
 .sheet-host .tabulator-row .tabulator-cell.tabulator-frozen.tabulator-frozen-left:not(.sheet-number),
 .sheet-host .tabulator .tabulator-header .tabulator-frozen.tabulator-frozen-left:not(.sheet-number) {
-  border-right: 2px solid var(--line-strong);
+  border-right: 2px solid var(--sheet-line-strong);
 }
 
 /* Vùng chọn: viền màu nhấn rõ, nền nhạt */
@@ -195,13 +222,13 @@
 
 .sheet-host .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight,
 .sheet-host .tabulator .tabulator-header .tabulator-col.tabulator-range-selected {
-  background: #d9e3ea;
-  color: var(--ink);
+  background: var(--sheet-head-selected);
+  color: var(--on-sheet-head);
 }
 
 .sheet-host .tabulator-row.tabulator-range-highlight .tabulator-cell.tabulator-range-row-header,
 .sheet-host .tabulator-row.tabulator-range-selected .tabulator-cell.tabulator-range-row-header {
-  background: #d9e3ea;
+  background: var(--sheet-line);
   color: var(--ink);
 }
 
@@ -219,7 +246,7 @@
 
 .sheet-host--idle .tabulator-row.tabulator-range-highlight .tabulator-cell.tabulator-range-row-header,
 .sheet-host--idle .tabulator-row.tabulator-range-selected .tabulator-cell.tabulator-range-row-header {
-  background: var(--sheet-head);
+  background: var(--sheet-number-bg);
   color: var(--ink-soft);
 }
 
@@ -233,12 +260,59 @@
 .sheet-title {
   display: block;
   overflow: hidden;
-  font-size: calc(15px * var(--sheet-zoom));
+  font-size: calc(var(--sheet-serif-size) * var(--sheet-zoom));
   text-overflow: ellipsis;
 }
 
 .sheet-muted {
   color: var(--sheet-muted);
+}
+
+.sheet-text--none {
+  color: var(--none-ink);
+}
+
+.sheet-icon {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.sheet-icon--verified {
+  color: var(--ok-ink);
+}
+
+.sheet-icon--page_corrected {
+  color: var(--fix-ink);
+}
+
+.sheet-icon--needs_review {
+  color: var(--warn-ink);
+}
+
+.sheet-icon--not_found {
+  color: var(--none-ink);
+}
+
+.sheet-icon--manual {
+  color: var(--ink-soft);
+}
+
+.sheet-empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.sheet-empty__text {
+  color: var(--ink-soft);
 }
 
 .sheet-cell--dim .sheet-text {
@@ -280,13 +354,14 @@
   overflow-wrap: anywhere;
 }
 
-.sheet-host--wrap .sheet-text {
-  overflow: visible;
-}
-
+/* Hiện đủ chữ: xuống tối đa 3 dòng, còn dài thì xem trong khung bằng chứng */
+.sheet-host--wrap .sheet-text,
 .sheet-host--wrap .sheet-title {
-  overflow: visible;
-  line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--sheet-wrap-lines);
+  line-clamp: var(--sheet-wrap-lines);
 }
 
 /* Dòng nhắc khi bảng chưa có bài hoặc lọc không ra bài nào: luôn nằm trong phần đang nhìn thấy */
@@ -313,7 +388,7 @@
   background: var(--surface);
   border: 2px solid var(--accent);
   border-radius: 4px;
-  box-shadow: 0 8px 24px rgb(26 39 48 / 0.18);
+  box-shadow: var(--shadow-md);
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 15px;
@@ -327,11 +402,6 @@
 }
 
 @media (max-width: 640px) {
-  .sheet-host {
-    height: max(320px, calc(100dvh - 360px));
-    border-radius: var(--radius);
-  }
-
   .sheet-title {
     font-size: 13px;
   }

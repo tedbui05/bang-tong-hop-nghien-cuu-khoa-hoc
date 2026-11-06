@@ -29,6 +29,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
   const { tables, createTable } = useStore();
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
   const [columns, setColumns] = useState<TableColumn[]>(() => (state === "trong" ? [titleColumn()] : suggestedColumns()));
   const [columnErrors, setColumnErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -101,6 +102,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
     }
     createTable(
       name.trim(),
+      description.trim(),
       columns.map((column) => ({ ...column, name: column.name.trim(), description: column.description.trim() })),
     );
     router.push("/them-bai");
@@ -135,6 +137,19 @@ function CreateTableForm({ state }: { state: PreviewState }) {
               {nameError}
             </p>
           ) : null}
+        </div>
+
+        <div className="setup-field setup-field--next">
+          <label htmlFor="mo-ta-bang">Mô tả ngắn (không bắt buộc)</label>
+          <input
+            id="mo-ta-bang"
+            name="mo-ta-bang"
+            type="text"
+            autoComplete="off"
+            placeholder="Ví dụ: Tổng quan cho chương 2…"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
         </div>
 
         <section className="setup-columns" aria-labelledby="thiet-lap-cot">

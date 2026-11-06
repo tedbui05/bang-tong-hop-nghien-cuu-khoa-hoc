@@ -21,7 +21,7 @@ type Store = {
   tables: SheetTable[];
   activeTable: SheetTable | null;
   setActiveTable: (id: string) => void;
-  createTable: (name: string, columns: TableColumn[]) => void;
+  createTable: (name: string, description: string, columns: TableColumn[]) => void;
   // Các thao tác với cột luôn áp dụng cho bảng đang mở.
   addColumn: (column: TableColumn) => void;
   changeColumn: (id: string, change: ColumnChange) => void;
@@ -113,9 +113,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setActiveId(id);
   }, []);
 
-  const createTable = useCallback<Store["createTable"]>((name, columns) => {
+  const createTable = useCallback<Store["createTable"]>((name, description, columns) => {
     const id = `bang-${crypto.randomUUID()}`;
-    setTables((current) => [...current, { id, name, columns, papers: [] }]);
+    setTables((current) => [...current, { id, name, description, columns, papers: [] }]);
     setSavedTitle(null);
     setActiveId(id);
   }, []);

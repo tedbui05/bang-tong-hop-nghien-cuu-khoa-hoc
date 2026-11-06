@@ -5,8 +5,8 @@ import type { CellComponent, ColumnDefinition, Options, RowComponent, Tabulator 
 import "tabulator-tables/dist/css/tabulator.min.css";
 import "@/app/sheet.css";
 import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
-import { cellMatchesFilter, foldText, paperMatches, splitMatches, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
-import { getLabelKey, isCellEdited, type ReviewCell, type SavedPaper, type TableColumn } from "@/lib/types";
+import { cellMatchesFilter, foldText, paperMatches, splitMatches, STATUS_ICON_PATHS, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
+import { getLabelKey, isCellEdited, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 
 export type SheetSort = { field: string; dir: "asc" | "desc" };
@@ -29,6 +29,7 @@ type Props = {
   onSelection: (selection: SheetSelection | null) => void;
   onVisibleCount: (count: number) => void;
   onEdit: (paperId: string, column: TableColumn, value: string) => void;
+  onAddPaper: () => void;
 };
 
 // Thay đổi nào cần dựng lại phần tiêu đề của bảng.
@@ -88,8 +89,7 @@ export function SheetGrid(props: Props) {
           layout: "fitData",
           index: "id",
           data: papers.map((paper) => toRow(paper, columns)),
-          placeholder: () =>
-            latest.current.papers.length === 0 ? "Chưa có bài nào. Bấm “Thêm bài báo” để điền vào các cột này." : "Không có bài nào khớp",
+          placeholder: () => emptyMessage(latest),
           movableColumns: true,
           rowHeader: {
             formatter: "rownum",
@@ -273,6 +273,18 @@ export function SheetGrid(props: Props) {
     });
   }, [ready, sort, filters, signature]);
 
+  // Khung bằng chứng mở ra làm bảng hẹp lại: giữ ô đang chọn trong phần nhìn thấy.
+  const { hasSelection } = props;
+  useEffect(() => {
+    if (!ready || !hasSelection) return;
+    const timer = setTimeout(() => {
+      const table = tableRef.current as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] } | null;
+      const cell = table?.getRanges()[0]?.getCells().flat().find((item) => item.getField());
+      if (cell) revealCell(cell);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [ready, hasSelection]);
+
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
     if (target.closest("input, textarea, button, select")) return;
@@ -325,15 +337,54 @@ export function SheetGrid(props: Props) {
   );
 }
 
-// Thư viện chưa tính đến cột cố định khi cuộn: ô được chọn không được chui xuống dưới cột đó.
+// Thư viện chưa tính đến cột cố định khi cuộn: ô được chọn không được chui xuống dưới cột đó hay ra ngoài cạnh phải.
 function revealCell(cell: CellComponent) {
   const element = cell.getElement();
   if (element.classList.contains("tabulator-frozen")) return;
   const frozen = element.parentElement?.querySelector(`[tabulator-field="${TITLE_COLUMN_ID}"]`);
   const holder = element.closest(".tabulator-tableholder");
   if (!frozen || !holder) return;
-  const hidden = frozen.getBoundingClientRect().right - element.getBoundingClientRect().left;
+  const box = element.getBoundingClientRect();
+  const hidden = frozen.getBoundingClientRect().right - box.left;
+  const overflow = box.right - holder.getBoundingClientRect().right;
   if (hidden > 0) holder.scrollLeft -= hidden;
+  else if (overflow > 0) holder.scrollLeft += Math.min(overflow, -hidden);
+}
+
+function emptyMessage(latest: RefObject<Props>): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "sheet-empty";
+  if (latest.current.papers.length > 0) {
+    box.append(span("sheet-empty__text", "Không có bài nào khớp"));
+    return box;
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button button--primary";
+  button.textContent = "Thêm bài báo";
+  button.addEventListener("click", () => latest.current.onAddPaper());
+  box.append(span("sheet-empty__text", "Chưa có bài nào. Thêm bài báo để điền vào các cột này."), button);
+  return box;
+}
+
+const STATUS_CLASSES: Partial<Record<LabelKey, string>> = {
+  page_corrected: "sheet-st--fix",
+  needs_review: "sheet-st--warn",
+  not_found: "sheet-st--none",
+};
+
+function statusIcon(label: LabelKey): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", `sheet-icon sheet-icon--${label}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", STATUS_LABELS[label]);
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+  title.textContent = STATUS_LABELS[label];
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", STATUS_ICON_PATHS[label]);
+  svg.append(title, path);
+  return svg;
 }
 
 function isPhone() {
@@ -384,6 +435,8 @@ function buildColumns(columns: TableColumn[], latest: RefObject<Props>): ColumnD
       field: column.id,
       frozen: isTitle,
       visible: isTitle || column.visible,
+      cssClass: column.infoKey === "year" ? "sheet-col--num" : undefined,
+      hozAlign: column.infoKey === "year" ? "right" : "left",
       width: column.width ?? defaultWidth(column, phone),
       titleFormatter: () => headerTitle(column, latest),
       formatter: (cell: CellComponent) => (isTitle ? formatTitle(cell, latest) : formatData(cell, column, latest)),
@@ -413,7 +466,6 @@ function headerTitle(column: TableColumn, latest: RefObject<Props>): HTMLElement
   button.dataset.column = column.id;
   button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-label", `Mở menu cột ${column.name}`);
-  button.title = column.description ? `AI cần tìm: ${column.description}` : "Chưa có mô tả cho AI";
   button.append(span("sheet-head__name", column.name), span("sheet-head__marks"));
 
   // Vừa kéo đổi chỗ cột xong thì không mở menu.
@@ -467,18 +519,16 @@ function formatData(cell: CellComponent, column: TableColumn, latest: RefObject<
 
   const model: ReviewCell | undefined = paper.cells.find((item) => item.column === column.id);
   element.classList.toggle("sheet-cell--dim", !cellMatchesFilter(model, statusFilter));
+  Object.values(STATUS_CLASSES).forEach((name) => element.classList.remove(name));
   if (!model) return unfilled();
 
   const label = getLabelKey(model);
   const edited = isCellEdited(model);
-  if (label === "needs_review") {
-    const flag = span("sheet-flag");
-    flag.setAttribute("role", "img");
-    flag.setAttribute("aria-label", STATUS_LABELS.needs_review);
-    flag.title = STATUS_LABELS.needs_review;
-    wrapper.append(flag);
-  }
-  const text = span(label === "not_found" && !edited ? "sheet-text sheet-muted" : "sheet-text");
+  const statusClass = STATUS_CLASSES[label];
+  if (statusClass) element.classList.add(statusClass);
+  if (label === "needs_review") wrapper.append(span("sheet-flag"));
+  const text = span(label === "not_found" && !edited ? "sheet-text sheet-text--none" : "sheet-text");
+  text.append(statusIcon(label));
   if (edited) text.append(span("sheet-edited", "đã sửa"), " ");
   textNodes(text, model.value_vi, query);
   wrapper.append(text);

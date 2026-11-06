@@ -24,16 +24,17 @@ Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 - `src/lib/sample-data.ts`: dữ liệu mẫu từ 8 bài báo thật (Anh, Việt, Trung). Mọi câu trích được đối chiếu với PDF gốc, nhãn gán tay theo kết quả dò. Không được bịa câu trích: câu chưa đối chiếu được thì để trống, gắn "cần kiểm tra" và ghi rõ là dữ liệu minh hoạ.
 - `src/lib/sheet.ts`: tìm kiếm không phân biệt dấu, lọc, sắp xếp và đếm nhãn cho bảng tổng hợp.
 - `src/components/SheetGrid.tsx`: bảng kiểu Google Sheets, bọc thư viện Tabulator (MIT), chỉ tải ở trang bảng. Phần nhìn nằm trong `src/app/sheet.css`. Tiêu đề cột là nút thật để mở menu bằng bàn phím, và vẫn kéo được để đổi chỗ. Ba điều phải giữ khi sửa: `keybindings` tắt `navPrev`, `navNext` để phím Tab không bị kẹt trong bảng; `revealCell` giữ ô đang chọn không chui xuống cột cố định, vì Tabulator cảnh báo cột cố định dùng chung với chọn vùng có thể lỗi (cảnh báo này còn hiện trong console); không bật dán và không bật xóa vùng.
-- `src/components/EvidenceBar.tsx`: thanh bằng chứng ở vị trí thanh công thức.
+- `src/components/EvidencePanel.tsx`: khung bằng chứng, chỉ hiện khi chọn ô. Máy tính mở bên phải, điện thoại trượt lên từ dưới và không che ô đang chọn.
+- Trang bảng chiếm trọn màn hình, chỉ bảng tự cuộn bên trong: thanh tiêu đề, hàng ô số liệu bấm để lọc, thanh công cụ một dòng, rồi đến bảng.
 - Sinh viên bấm đúp để sửa ô nội dung ngay trong bảng: ô có chữ "đã sửa", giữ đề xuất ban đầu của AI, ghi thao tác `o_bi_sua` kèm `noi: "bang"`. Ô "chưa điền" tự gõ thì ghi "do bạn điền", không có câu trích. Câu trích gốc không sửa được; Tên bài chỉ sửa được ở trang duyệt.
 - `src/lib/store.tsx`: bộ nhớ tạm dùng chung giữa các trang, tải lại trang là mất. `saveReview` từ chối lưu khi còn ô chưa duyệt hoặc chưa xác nhận thông tin bài.
 - `src/lib/types.ts`: kiểu dữ liệu theo skill `citation-check`.
 - `src/lib/events.ts`: ghi thao tác, hiện chỉ in ra console.
 - `PreviewBar` và `?trang-thai=dang-tai|loi|trong`: chỉ để xem thử trạng thái, bỏ khi nối dữ liệu thật.
 
-Quy ước phông: chữ lấy từ bài báo dùng `.source-text` (Source Serif 4), lời của AI và giao diện dùng Be Vietnam Pro.
+Quy ước phông: chữ lấy từ bài báo dùng `.source-text` (IBM Plex Serif), lời của AI và giao diện dùng IBM Plex Sans.
 
-Quy ước giao diện: nền trung tính và một màu nhấn. Màu xanh lá, xanh dương, vàng chỉ dùng cho trạng thái, đỏ chỉ dùng cho chữ báo lỗi. Câu trích gốc và tên bài có `translate="no"` để trình duyệt không tự dịch.
+Quy ước giao diện: nền trung tính và một màu nhấn. Màu xanh lá, xanh dương, vàng chỉ dùng cho trạng thái, đỏ chỉ dùng cho chữ báo lỗi. Ô "đã khớp" chỉ có biểu tượng, không tô nền; ba trạng thái còn lại tô nền nhạt kèm biểu tượng. Câu trích gốc và tên bài có `translate="no"` để trình duyệt không tự dịch.
 
 Phím tắt trang duyệt chỉ chạy khi đang chọn thẻ (`ReviewCard`):
 
@@ -45,7 +46,13 @@ Phím tắt trang duyệt chỉ chạy khi đang chọn thẻ (`ReviewCard`):
 
 ## Thiết kế giao diện
 
-Mặc định là quy ước hiện tại: nền trung tính, một màu nhấn, phông Be Vietnam Pro và Source Serif 4. Khi làm giao diện, skill `ui-ux-pro-max` chỉ đưa ra các phương án về màu, phông và bố cục để người dùng so sánh, trong đó phương án đầu tiên luôn là quy ước hiện tại. Chỉ đổi khi người dùng chọn phương án khác. Nếu `frontend-design` hướng dẫn khác ở ba việc này thì theo `ui-ux-pro-max`.
+Phương án đang dùng là **phương án 2 (Data-Dense Dashboard)** do người dùng chọn ngày 2026-11-06, có nới kích thước: nền và chữ theo bảng màu học thuật của skill, màu nhấn `#1e3a5f`, phông IBM Plex Sans và IBM Plex Serif, chữ trong bảng 14px, hàng cao 40px, đệm 8px trên dưới và 12px hai bên.
+
+Lý do: màn hình chính là bảng dày thông tin; IBM Plex có chữ số đều nên số thẳng hàng, điều Be Vietnam Pro không làm được; hai phông cùng họ nhưng một có chân, một không, nên phân biệt rõ chữ bài báo với chữ AI; cỡ chữ và hàng được nới so với bản gốc của phương án để đọc lâu đỡ mỏi.
+
+Mọi màu, phông và kích thước nằm trong biến CSS ở `:root` của `src/app/globals.css`. Không viết mã màu ở nơi khác; ngoại lệ duy nhất là `themeColor` trong `layout.tsx`, vì trình duyệt không đọc được biến CSS ở đó.
+
+Khi làm giao diện, skill `ui-ux-pro-max` chỉ đưa ra các phương án về màu, phông và bố cục để người dùng so sánh, trong đó phương án đầu tiên luôn là quy ước đang dùng. Chỉ đổi khi người dùng chọn phương án khác. Nếu `frontend-design` hướng dẫn khác ở ba việc này thì theo `ui-ux-pro-max`.
 
 Dù skill nào đề xuất gì, luôn giữ các nguyên tắc đã chốt:
 

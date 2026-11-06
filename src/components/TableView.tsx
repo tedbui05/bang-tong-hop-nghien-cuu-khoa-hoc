@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { checkColumnName, countUnfilled, isInfoEdited, newContentColumn, removedInfoColumns, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
@@ -8,7 +9,8 @@ import { countLabels, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
 import { useStore } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
-import { EvidenceBar } from "./EvidenceBar";
+import { EvidencePanel } from "./EvidencePanel";
+import { StatusIcon } from "./StatusBadge";
 import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 
@@ -16,36 +18,26 @@ const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", 
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { tables, activeTable, setActiveTable, savedTitle } = useStore();
+  const { activeTable } = useStore();
   const table = state === "trong" ? null : activeTable;
-  const showTable = state === "binh-thuong" && table !== null;
+
+  // Có bảng thì chiếm trọn màn hình; các trạng thái khác dùng khung trang thường.
+  if (state === "binh-thuong" && table) {
+    return (
+      <main id="noi-dung" className="sheet-page">
+        {/* Mỗi bảng có bộ lọc và vùng chọn riêng nên đổi bảng là dựng lại từ đầu. */}
+        <Sheet key={table.id} table={table} />
+      </main>
+    );
+  }
 
   return (
-    <main id="noi-dung" className="page page--wide page--sheet">
+    <main id="noi-dung" className="page page--wide">
       <div className="page-heading">
-        <h1>{showTable ? table.name : "Bảng tổng hợp"}</h1>
-        <div className="page-heading__actions">
-          {showTable && tables.length > 1 ? (
-            <label className="sheet-toolbar__field">
-              <span>Đổi bảng</span>
-              <select value={table.id} onChange={(event) => setActiveTable(event.target.value)}>
-                {tables.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <Link className={showTable ? "button button--secondary" : "button button--primary"} href="/tao-bang">
-            Tạo bảng mới
-          </Link>
-          {showTable ? (
-            <Link className="button button--primary" href="/them-bai">
-              Thêm bài báo
-            </Link>
-          ) : null}
-        </div>
+        <h1>Bảng tổng hợp</h1>
+        <Link className="button button--primary" href="/tao-bang">
+          Tạo bảng mới
+        </Link>
       </div>
 
       {state === "dang-tai" ? (
@@ -74,16 +66,21 @@ export function TableView({ state }: { state: PreviewState }) {
         </StateMessage>
       ) : null}
 
-      {/* Mỗi bảng có bộ lọc và vùng chọn riêng nên đổi bảng là dựng lại từ đầu. */}
-      {showTable ? <Sheet key={table.id} table={table} savedTitle={savedTitle} /> : null}
-
       <p className="fine-print">Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao.</p>
     </main>
   );
 }
 
-function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | null }) {
-  const { editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
+const STAT_TILES: { key: LabelKey; label: string }[] = [
+  { key: "verified", label: "Đã khớp" },
+  { key: "page_corrected", label: "Đã sửa số trang" },
+  { key: "needs_review", label: "Cần kiểm tra" },
+  { key: "not_found", label: "Không tìm thấy" },
+];
+
+function Sheet({ table }: { table: SheetTable }) {
+  const router = useRouter();
+  const { tables, setActiveTable, savedTitle, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
   const { papers, columns } = table;
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -96,6 +93,7 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
   const [visibleCount, setVisibleCount] = useState(papers.length);
   const [menu, setMenu] = useState<{ columnId: string; anchor: DOMRect } | null>(null);
   const [columnNotice, setColumnNotice] = useState<string | null>(null);
+  const [savedNoticeClosed, setSavedNoticeClosed] = useState(false);
 
   const counts = useMemo(() => countLabels(papers), [papers]);
   const languages = useMemo(
@@ -150,6 +148,11 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
     setColumnNotice(`Đã xoá cột “${name}”.`);
   }
 
+  const notice =
+    (exportNote ? "Bản xem thử chưa tạo được file Excel. Nút này sẽ hoạt động ở bước sau." : null) ??
+    columnNotice ??
+    (savedTitle && !savedNoticeClosed ? `Đã lưu vào bảng: ${savedTitle}` : null);
+
   const zoomIndex = ZOOM_STEPS.indexOf(zoom);
   const hasFilters = Boolean(query) || statusFilter !== "all" || Object.values(columnFilters).some(Boolean);
 
@@ -161,27 +164,75 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
 
   return (
     <>
-      <p className="overview">
-        <span>{papers.length} bài đã lưu</span>
-        <span>{counts.verified} ô đã khớp</span>
-        <button type="button" className="overview__flag" onClick={() => setStatusFilter("needs_review")}>
-          {counts.needs_review} ô cần kiểm tra
+      <header className="sheet-titlebar">
+        <div className="sheet-titlebar__text">
+          <h1>{table.name}</h1>
+          <p>{table.description || `${papers.length} bài, ${columns.length} cột`}</p>
+        </div>
+        <div className="sheet-titlebar__actions">
+          {tables.length > 1 ? (
+            <label className="sheet-titlebar__switch">
+              <span>Đổi bảng</span>
+              <select value={table.id} onChange={(event) => setActiveTable(event.target.value)}>
+                {tables.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <Link className="button sheet-titlebar__ghost" href="/tao-bang">
+            Tạo bảng mới
+          </Link>
+          <Link className="button sheet-titlebar__solid" href="/them-bai">
+            Thêm bài báo
+          </Link>
+        </div>
+      </header>
+
+      <div className="sheet-stats" role="group" aria-label="Tổng quan, bấm để lọc">
+        <button type="button" className="sheet-stat" aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
+          <span className="sheet-stat__number">{papers.length}</span>
+          <span className="sheet-stat__label">Tổng số bài</span>
         </button>
-        {editedCount > 0 ? <span>{editedCount} ô đã sửa</span> : null}
-        {unfilledCount > 0 ? <span>{unfilledCount} ô chưa điền</span> : null}
-        {languages.length > 0 ? <span>{languages.join(", ")}</span> : null}
-      </p>
-
-      {savedTitle ? (
-        <p className="notice" role="status">
-          Đã lưu vào bảng: <cite translate="no">{savedTitle}</cite>
+        {STAT_TILES.map((tile) => (
+          <button
+            key={tile.key}
+            type="button"
+            className={`sheet-stat sheet-stat--${tile.key}`}
+            aria-pressed={statusFilter === tile.key}
+            onClick={() => setStatusFilter(statusFilter === tile.key ? "all" : tile.key)}
+          >
+            <span className="sheet-stat__number">{counts[tile.key]}</span>
+            <span className="sheet-stat__label">
+              <StatusIcon label={tile.key} />
+              {tile.label}
+            </span>
+          </button>
+        ))}
+        <p className="sheet-stats__extra">
+          {editedCount > 0 ? <span>{editedCount} ô đã sửa</span> : null}
+          {unfilledCount > 0 ? <span>{unfilledCount} ô chưa điền</span> : null}
+          {languages.length > 0 ? <span>{languages.join(", ")}</span> : null}
         </p>
-      ) : null}
+      </div>
 
-      {columnNotice ? (
-        <p className="notice" role="status">
-          {columnNotice}
-        </p>
+      {notice ? (
+        <div className="sheet-notice" role="status">
+          <p>{notice}</p>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setColumnNotice(null);
+              setSavedNoticeClosed(true);
+              setExportNote(false);
+            }}
+          >
+            Đóng
+          </button>
+        </div>
       ) : null}
 
       <div className="sheet-toolbar" role="group" aria-label="Công cụ của bảng">
@@ -194,14 +245,14 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
             name="tim-kiem"
             type="search"
             autoComplete="off"
-            placeholder="Tìm trong toàn bảng…"
+            placeholder="Tìm trong bảng…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
 
         <label className="sheet-toolbar__field">
-          <span>Trạng thái</span>
+          <span>Lọc</span>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
             <option value="all">Tất cả</option>
             {STATUS_ORDER.map((status) => (
@@ -213,7 +264,7 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
         </label>
 
         <details className="columns-menu">
-          <summary className="button button--quiet sheet-toolbar__button">Cột</summary>
+          <summary className="button button--quiet sheet-toolbar__button">Ẩn, hiện cột</summary>
           <div className="columns-menu__panel">
             <fieldset>
               <legend className="visually-hidden">Ẩn hoặc hiện cột</legend>
@@ -283,23 +334,17 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
         </button>
       </div>
 
-      {exportNote ? (
-        <p className="notice" role="status">
-          Bản xem thử chưa tạo được file Excel. Nút này sẽ hoạt động ở bước sau.
-        </p>
-      ) : null}
-
-      {hasFilters && visibleCount === 0 ? (
-        <p className="notice" role="status">
-          Không có bài nào khớp.{" "}
+      {hasFilters && visibleCount === 0 && papers.length > 0 ? (
+        <div className="sheet-notice" role="status">
+          <p>Không có bài nào khớp.</p>
           <button type="button" className="link-button" onClick={clearFilters}>
             Xóa bộ lọc
           </button>
-        </p>
+        </div>
       ) : null}
 
-      <EvidenceBar selection={selection} onClose={() => setSelected(null)} />
-
+      <div className="sheet-workspace">
+        <div className="sheet-workspace__grid">
       <SheetGrid
         papers={papers}
         columns={columns}
@@ -316,7 +361,18 @@ function Sheet({ table, savedTitle }: { table: SheetTable; savedTitle: string | 
         onSelection={setSelected}
         onVisibleCount={setVisibleCount}
         onEdit={editSavedCell}
+        onAddPaper={() => router.push("/them-bai")}
       />
+        </div>
+        {selection ? <EvidencePanel selection={selection} onClose={() => setSelected(null)} /> : null}
+      </div>
+
+      <footer className="sheet-footer">
+        <span>
+          Đang hiện {visibleCount}/{papers.length} bài
+        </span>
+        <span>Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao.</span>
+      </footer>
 
       {menu && menuColumn ? (
         <ColumnMenu

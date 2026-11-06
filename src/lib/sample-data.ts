@@ -527,6 +527,7 @@ const samplePapers: SavedPaper[] = ([
 export const sampleTable: SheetTable = {
   id: "bang-mau",
   name: "Bảng mẫu",
+  description: "Dữ liệu minh hoạ từ 7 bài báo thật về tín dụng vi mô, việc làm và chính sách.",
   columns: [
     ...suggestedColumns(),
     {

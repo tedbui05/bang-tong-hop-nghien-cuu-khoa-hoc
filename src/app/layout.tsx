@@ -1,20 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Be_Vietnam_Pro, Source_Serif_4 } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { StoreProvider } from "@/lib/store";
 import "./globals.css";
 
-// Be Vietnam Pro: lời của giao diện và của AI. Source Serif 4: chữ lấy từ bài báo.
-const uiFont = Be_Vietnam_Pro({
+// IBM Plex Sans: lời của giao diện và của AI. IBM Plex Serif: chữ lấy từ bài báo.
+// Cả hai phải có bộ chữ tiếng Việt, và đều có chữ số đều nên số trong bảng thẳng hàng.
+const uiFont = IBM_Plex_Sans({
   subsets: ["latin", "vietnamese"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-ui",
   display: "swap",
 });
 
-const sourceFont = Source_Serif_4({
+const sourceFont = IBM_Plex_Serif({
   subsets: ["latin", "vietnamese"],
+  weight: ["400", "600"],
   variable: "--font-source",
   display: "swap",
 });
@@ -25,7 +27,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f6f7f7",
+  // Trình duyệt không đọc được biến CSS ở đây: giữ đúng bằng --accent trong globals.css.
+  themeColor: "#1e3a5f",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
