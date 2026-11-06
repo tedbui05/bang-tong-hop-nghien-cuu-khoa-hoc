@@ -35,3 +35,29 @@
 - **AI đề xuất gì:** `/check` báo dự án chưa có code nên chưa có gì để kiểm tra. AI gợi ý gõ thử lại `/ailog`.
 - **Chấp nhận hay sửa gì, vì sao:** Người dùng đã gõ lại `/ailog`, không nêu lý do. Vẫn chưa có phản hồi về các phần AI đề xuất thêm ở mục trước.
 - **AI đã sai ở đâu:** không có.
+
+## 2026-11-06 20:01 — Cài skill, tạo citation-check và đổi sang đăng nhập ẩn danh
+
+- **Đã nhờ AI làm gì:**
+  - Cài 5 skill ngoài và đọc lại nội dung từng skill.
+  - Ghi quyết định dùng đăng nhập ẩn danh của Supabase vào `CLAUDE.md`.
+  - Tạo skill `citation-check` theo mẫu của người dùng, rồi đồng bộ với `CLAUDE.md` và `reviewer.md`.
+  - Lưu vào git.
+- **AI đề xuất gì:**
+  - Sửa các chỗ mẫu `citation-check` lệch với quyết định đã chốt: câu có ở nhiều trang, thiếu `quote_vi`, ô `not_found`, nhãn tiếng Việt.
+  - Yêu cầu `reviewer` đọc skill này khi soát phần trích dẫn.
+  - Đặt ngưỡng câu quá ngắn là dưới 15 ký tự.
+  - Dùng NFKC cho chữ dính "fi" và tính đến câu vắt qua hai trang.
+  - Chỉ chuẩn hóa để so sánh, giữ `guard.sh`, và kiểm tra quy tắc phân quyền theo chủ sở hữu từng dòng.
+- **Chấp nhận hay sửa gì, vì sao:**
+  - Đăng nhập ẩn danh: do người dùng đề xuất thay mã tự tạo, để mỗi trình duyệt có danh tính thật và quy tắc phân quyền chặn được việc xem bảng của nhau.
+  - Các sửa cho `citation-check` và `reviewer`: chấp nhận.
+  - Câu quá ngắn: người dùng thêm trường hợp này vì câu ngắn dễ xuất hiện ở nhiều chỗ. Giữ ngưỡng 15 ký tự, ghi là con số tạm, sẽ chỉnh sau buổi thử thật.
+  - NFKC: chấp nhận, áp dụng cho cả câu trích và văn bản bài, thêm test.
+  - Câu vắt qua hai trang: người dùng chọn tìm thêm ở chỗ nối hai trang và tính theo trang bắt đầu.
+  - `guard.sh` và việc chặn thêm các lệnh xóa: giữ, vì chặn nhầm chỉ tốn thêm một lần viết lại lệnh, còn nếu lỡ để lộ API key thì phải đổi key và dọn lịch sử git, mất công hơn nhiều.
+  - Đầu trang, chân trang: để thử trên bài thật rồi quyết định, có ghi nhắc trong `CLAUDE.md`.
+- **AI đã sai ở đâu:**
+  - Kết quả `/doctor` đã cho thấy dấu hiệu máy chưa có npm, nhưng AI không phát hiện, cũng không nói khi tạo `/check`. Máy thiếu Node.js chỉ lộ ra khi lệnh cài skill bị lỗi.
+  - Lần đối chiếu đầu của `citation-check` bỏ sót quy tắc "kiểm tra bị lỗi giữa chừng" chỉ có trong `reviewer.md`, đến lần đối chiếu cuối mới thấy.
+  - `guard.sh` do AI viết đã chặn nhầm hai lệnh của chính AI vì có chữ `.env`, dù lệnh không mở file `.env` nào.
