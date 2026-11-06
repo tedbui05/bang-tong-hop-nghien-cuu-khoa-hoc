@@ -1,0 +1,347 @@
+/* Bảng tổng hợp: phần nhìn đè lên kiểu mặc định của Tabulator */
+.sheet-frame {
+  position: relative;
+}
+
+.sheet-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.sheet-host {
+  --sheet-zoom: 1;
+  height: max(320px, calc(100dvh - 412px));
+  background: var(--surface);
+  border: 1px solid var(--sheet-line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+.sheet-host > div {
+  height: 100%;
+}
+
+.sheet-host .tabulator {
+  height: 100%;
+  background: var(--surface);
+  border: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: calc(14px * var(--sheet-zoom));
+  line-height: 1.55;
+}
+
+/* Tiêu đề: hàng chữ cái A, B, C ở trên, tên cột đậm ở dưới */
+.sheet-host .tabulator .tabulator-header {
+  background: var(--sheet-head);
+  border-bottom: 2px solid var(--line-strong);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sheet-host .tabulator .tabulator-header .tabulator-col {
+  background: var(--sheet-head);
+  border-right: 1px solid var(--sheet-line);
+}
+
+.sheet-host .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+  padding: 0;
+}
+
+.sheet-host .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+  padding-right: 0;
+  white-space: normal;
+}
+
+.sheet-head {
+  display: block;
+}
+
+.sheet-letter {
+  display: block;
+  padding: 2px 0;
+  background: var(--sheet-letter);
+  border-bottom: 1px solid var(--sheet-line);
+  color: var(--ink-soft);
+  font-size: calc(12px * var(--sheet-zoom));
+  font-weight: 500;
+  text-align: center;
+}
+
+/* Tên cột là nút mở menu */
+.sheet-head__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: calc(8px * var(--sheet-zoom)) 8px calc(8px * var(--sheet-zoom)) 12px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(14px * var(--sheet-zoom));
+  font-weight: 600;
+  text-align: left;
+}
+
+.sheet-head__title:hover {
+  background: #e3e7ea;
+}
+
+.sheet-head__title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sheet-head__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dấu cạnh tên cột: mũi tên mở menu, chiều sắp xếp, dấu đang lọc */
+.sheet-head__marks {
+  flex: none;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sheet-head__marks::after {
+  content: "▾";
+}
+
+.tabulator-col[data-sort="asc"] .sheet-head__marks::before {
+  content: "↑ ";
+  color: var(--accent);
+}
+
+.tabulator-col[data-sort="desc"] .sheet-head__marks::before {
+  content: "↓ ";
+  color: var(--accent);
+}
+
+.sheet-col--filtered .sheet-head__marks::after {
+  content: "lọc ▾";
+  color: var(--accent);
+}
+
+/* Ô: đường kẻ rõ giữa mọi hàng và cột, chữ không dính vào đường kẻ */
+.sheet-host .tabulator-row {
+  min-height: calc(40px * var(--sheet-zoom));
+  background: var(--surface);
+  border-bottom: 1px solid var(--sheet-line);
+}
+
+.sheet-host .tabulator-row.tabulator-row-even {
+  background: var(--surface);
+}
+
+.sheet-host .tabulator-row .tabulator-cell {
+  padding: calc(9px * var(--sheet-zoom)) calc(12px * var(--sheet-zoom));
+  background: var(--surface);
+  border-right: 1px solid var(--sheet-line);
+  white-space: nowrap;
+}
+
+/* Rê chuột: cả hàng sáng nhẹ */
+.sheet-host .tabulator-row.tabulator-selectable:hover,
+.sheet-host .tabulator-row:hover {
+  background: var(--sheet-hover);
+}
+
+.sheet-host .tabulator-row:hover .tabulator-cell {
+  background: var(--sheet-hover);
+}
+
+/* Cột số thứ tự */
+.sheet-host .tabulator .tabulator-header .tabulator-col.sheet-number,
+.sheet-host .tabulator-row .tabulator-cell.sheet-number,
+.sheet-host .tabulator-row:hover .tabulator-cell.sheet-number {
+  padding-right: 0;
+  padding-left: 0;
+  background: var(--sheet-head);
+  color: var(--ink-soft);
+  font-size: calc(12px * var(--sheet-zoom));
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Cột tên bài cố định: đường kẻ đậm hơn để thấy ranh giới khi cuộn */
+.sheet-host .tabulator-row .tabulator-cell.tabulator-frozen.tabulator-frozen-left:not(.sheet-number),
+.sheet-host .tabulator .tabulator-header .tabulator-frozen.tabulator-frozen-left:not(.sheet-number) {
+  border-right: 2px solid var(--line-strong);
+}
+
+/* Vùng chọn: viền màu nhấn rõ, nền nhạt */
+.sheet-host .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range {
+  border: 2px solid var(--accent);
+}
+
+.sheet-host .tabulator .tabulator-tableholder .tabulator-range-overlay .tabulator-range-cell-active {
+  border: 2px solid var(--accent);
+}
+
+.sheet-host .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected):not(.tabulator-range-row-header) {
+  background: var(--accent-soft);
+}
+
+.sheet-host .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight,
+.sheet-host .tabulator .tabulator-header .tabulator-col.tabulator-range-selected {
+  background: #d9e3ea;
+  color: var(--ink);
+}
+
+.sheet-host .tabulator-row.tabulator-range-highlight .tabulator-cell.tabulator-range-row-header,
+.sheet-host .tabulator-row.tabulator-range-selected .tabulator-cell.tabulator-range-row-header {
+  background: #d9e3ea;
+  color: var(--ink);
+}
+
+/* Chưa chọn ô nào: thư viện vẫn giữ sẵn ô đầu tiên bên trong, nhưng không hiện ra */
+.sheet-host--idle .tabulator .tabulator-tableholder .tabulator-range-overlay,
+.sheet-host--idle .tabulator .tabulator-tableholder .tabulator-range-overlay * {
+  /* Thư viện đặt visibility ngay trên phần tử nên phải dùng !important */
+  visibility: hidden !important;
+}
+
+.sheet-host--idle .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight,
+.sheet-host--idle .tabulator .tabulator-header .tabulator-col.tabulator-range-selected {
+  background: var(--sheet-head);
+}
+
+.sheet-host--idle .tabulator-row.tabulator-range-highlight .tabulator-cell.tabulator-range-row-header,
+.sheet-host--idle .tabulator-row.tabulator-range-selected .tabulator-cell.tabulator-range-row-header {
+  background: var(--sheet-head);
+  color: var(--ink-soft);
+}
+
+/* Nội dung ô */
+.sheet-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-title {
+  display: block;
+  overflow: hidden;
+  font-size: calc(15px * var(--sheet-zoom));
+  text-overflow: ellipsis;
+}
+
+.sheet-muted {
+  color: var(--sheet-muted);
+}
+
+.sheet-cell--dim .sheet-text {
+  opacity: 0.4;
+}
+
+.sheet-edited {
+  display: inline-block;
+  padding: 0 5px;
+  background: var(--accent-soft);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.sheet-host mark {
+  background: var(--accent-soft);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--accent-soft);
+  color: inherit;
+}
+
+/* Tam giác góc ô, giống dấu ghi chú của bảng tính */
+.sheet-flag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 10px solid var(--flag);
+  border-left: 10px solid transparent;
+}
+
+/* Chế độ hiện đủ chữ */
+.sheet-host--wrap .tabulator-row .tabulator-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sheet-host--wrap .sheet-text {
+  overflow: visible;
+}
+
+.sheet-host--wrap .sheet-title {
+  overflow: visible;
+  line-height: 1.45;
+}
+
+/* Dòng nhắc khi bảng chưa có bài hoặc lọc không ra bài nào: luôn nằm trong phần đang nhìn thấy */
+.sheet-host .tabulator .tabulator-tableholder .tabulator-placeholder {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.sheet-host .tabulator .tabulator-tableholder .tabulator-placeholder .tabulator-placeholder-contents {
+  position: sticky;
+  left: 0;
+  padding: 16px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* Ô sửa nổi trên bảng */
+.sheet-editor {
+  position: fixed;
+  z-index: 30;
+  height: 160px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgb(26 39 48 / 0.18);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  resize: none;
+}
+
+/* Viền màu nhấn đã đủ báo đang sửa, không cần thêm viền focus thứ hai */
+.sheet-editor:focus-visible {
+  outline: 0;
+}
+
+@media (max-width: 640px) {
+  .sheet-host {
+    height: max(320px, calc(100dvh - 360px));
+    border-radius: var(--radius);
+  }
+
+  .sheet-title {
+    font-size: 13px;
+  }
+
+  .sheet-host .tabulator-row .tabulator-cell {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .sheet-head__title {
+    padding-left: 8px;
+  }
+}

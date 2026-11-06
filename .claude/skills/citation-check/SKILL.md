@@ -12,6 +12,7 @@ description: Quy tắc trích xuất và kiểm tra trích dẫn. Dùng khi vi�
 - Ô not_found: value_vi = "không tìm thấy"; quote_original, quote_vi, page để trống (null).
 
 ## Quy tắc cho AI
+- Gửi cho AI cả tên và mô tả ("AI cần tìm gì") của từng cột. Trường column AI trả về là mã cột, không phải tên cột, để đổi tên cột không làm mất dữ liệu.
 - quote_original phải chép nguyên văn từ văn bản đã gửi, đúng ngôn ngữ gốc.
 - Không có thông tin thì status = "not_found", không đoán.
 

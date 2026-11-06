@@ -11,5 +11,9 @@ out/
 # Hệ điều hành
 .DS_Store
 
+# File do Next.js và TypeScript tự sinh
+next-env.d.ts
+*.tsbuildinfo
+
 # File tạm của Python khi chạy script trong skill
 __pycache__/
