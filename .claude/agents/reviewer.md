@@ -16,7 +16,7 @@ Mỗi khi soát phần này, đọc `.claude/skills/citation-check/SKILL.md` tr�
 
 - Việc kiểm tra phải là code thường, không có lời gọi AI nào trong đường đi của nó.
 - Phải so với bản gốc của câu trích, không dùng bản dịch tiếng Việt.
-- Phải chuẩn hóa bằng NFKC cho cả câu trích và văn bản bài.
+- Phải chuẩn hóa bằng NFKC cho cả câu trích và văn bản bài. Chỉ chuẩn hóa để so sánh, câu hiển thị và câu lưu vào bảng luôn là bản gốc.
 - Phải tìm trong từng trang và ở chỗ nối giữa cuối trang này với đầu trang sau. Câu vắt qua hai trang tính là trang bắt đầu của câu, và không được đếm trùng.
 - Phải đúng các kết quả sau:
   - Chỉ có ở trang AI ghi: đạt.

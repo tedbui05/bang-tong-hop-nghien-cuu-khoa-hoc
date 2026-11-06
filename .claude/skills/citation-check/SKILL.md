@@ -17,7 +17,7 @@ description: Quy tắc trích xuất và kiểm tra trích dẫn. Dùng khi vi�
 
 ## Kiểm tra bằng code (không dùng AI)
 1. Ô not_found: bỏ qua kiểm tra, không tính là needs_review.
-2. Chuẩn hóa cả quote_original và văn bản bài theo cùng một cách: Unicode NFKC, chữ thường, gộp khoảng trắng, nối từ bị ngắt bằng gạch nối cuối dòng.
+2. Chuẩn hóa cả quote_original và văn bản bài theo cùng một cách: Unicode NFKC, chữ thường, gộp khoảng trắng, nối từ bị ngắt bằng gạch nối cuối dòng. Chỉ chuẩn hóa để so sánh, câu hiển thị và câu lưu vào bảng luôn là bản gốc.
 3. Quote sau chuẩn hóa dưới 15 ký tự: needs_review, dù tìm thấy ở đâu. Số 15 là con số tạm, sẽ chỉnh sau buổi thử thật.
 4. Tìm quote trong từng trang và ở chỗ nối giữa cuối trang này với đầu trang sau.
    - Ghép hai trang trước rồi mới chuẩn hóa, để từ bị ngắt ở cuối trang vẫn được nối.
