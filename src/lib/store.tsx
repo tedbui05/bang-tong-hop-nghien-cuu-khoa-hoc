@@ -64,6 +64,7 @@ type Store = {
   addHighlight: (target: CellTarget, highlight: Highlight) => void;
   removeHighlight: (target: CellTarget, highlight: Highlight) => void;
   clearHighlights: (target: CellTarget) => void;
+  updateHighlights: (target: CellTarget, highlights: Highlight[]) => void;
   createTag: (name: string, color: TagColorKey) => string;
   toggleTag: (paperId: string, tagId: string) => void;
   deleteTag: (tagId: string) => void;
@@ -339,6 +340,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [updatePapers],
   );
 
+  const updateHighlights = useCallback<Store["updateHighlights"]>(
+    ({ paperId, columnId }, list) =>
+      updatePapers([paperId], (paper) => ({ ...paper, highlights: { ...paper.highlights, [columnId]: list } })),
+    [updatePapers],
+  );
+
   const createTag = useCallback<Store["createTag"]>(
     (name, color) => {
       const id = `nhan-${crypto.randomUUID()}`;
@@ -480,6 +487,7 @@ formatCells,
       addHighlight,
       removeHighlight,
       clearHighlights,
+      updateHighlights,
       createTag,
       toggleTag,
       deleteTag,
@@ -510,6 +518,7 @@ formatCells,
       addHighlight,
       removeHighlight,
       clearHighlights,
+      updateHighlights,
       createTag,
       toggleTag,
       deleteTag,

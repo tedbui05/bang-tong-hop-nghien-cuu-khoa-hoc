@@ -78,6 +78,7 @@ export function FormatBar({ targets, papers }: { targets: CellTarget[]; papers: 
         }
       }}
     >
+      <p className="format-bar__label">{targets.length > 1 ? `Định dạng ${targets.length} ô` : "Định dạng ô"}</p>
       <div className="format-bar__row">
         {toggleButton("bold", "In đậm", "B", "format-bar__button--bold")}
         {toggleButton("italic", "In nghiêng", "I", "format-bar__button--italic")}

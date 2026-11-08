@@ -1120,16 +1120,15 @@ body:has(.sheet-page) .preview-bar {
   text-align: center;
 }
 
-/* Khung bằng chứng */
+/* Khung bằng chứng: đầu khung và đáy khung đứng yên, phần giữa tự cuộn */
 .evidence-panel {
-  /* Giữ các phần tử định vị tuyệt đối bên trong khung, không cho chúng làm trang dài ra */
   position: relative;
+  display: flex;
   flex: 0 0 var(--evidence-width);
+  flex-direction: column;
   width: var(--evidence-width);
   min-height: 0;
-  padding: 12px 16px 20px;
-  overflow-y: auto;
-  background: var(--surface);
+  background: var(--bg);
   border-left: 1px solid var(--sheet-line-strong);
 }
 
@@ -1137,98 +1136,263 @@ body:has(.sheet-page) .preview-bar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--sheet-line);
 }
 
 .evidence-panel__heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 10px;
   min-width: 0;
 }
 
-.evidence-panel h2 {
-  font-size: 16px;
-  font-weight: 600;
+.evidence-panel__eyebrow {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.4;
 }
 
-.evidence-panel__close {
-  flex: none;
-  min-height: 32px;
-  padding: 2px 10px;
-  font-size: 14px;
+.evidence-panel h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .evidence-panel__count {
   color: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.evidence-panel__paper {
-  margin-top: 2px;
-  color: var(--ink-soft);
-  font-size: 13.5px;
-  line-height: 1.45;
-}
-
-.evidence-panel__status {
-  margin-top: 10px;
-}
-
-.evidence-panel__section {
-  margin-top: 12px;
-}
-
-.evidence-panel h3 {
-  margin: 0 0 2px;
-  color: var(--ink-soft);
-  font-size: 12.5px;
   font-weight: 600;
 }
 
+.evidence-panel__paper {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.evidence-panel__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--sheet-line);
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.evidence-panel__close:hover {
+  background: var(--sheet-zebra);
+}
+
+.evidence-panel__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 12px 16px 16px;
+  overflow-y: auto;
+}
+
+.evidence-panel__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evidence-panel__footer {
+  flex: none;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--sheet-line);
+}
+
+/* Thẻ nội dung trong khung */
+.evidence-card {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.evidence-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+  margin-bottom: 6px;
+}
+
+.evidence-card h3 {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.evidence-card__aside {
+  flex: none;
+}
+
+.evidence-card__aside .link-button {
+  min-height: 24px;
+  font-size: 13px;
+}
+
+.evidence-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 10px;
+}
+
+.evidence-card__meta .link-button {
+  min-height: 26px;
+  font-size: 13px;
+}
+
+.evidence-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.page-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  background: var(--soft);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* Dải trạng thái ở đầu: nhãn và một câu giải thích */
+.status-strip {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ok-ink);
+  border-radius: var(--radius);
+}
+
+.status-strip__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.status-strip p {
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.status-strip--page_corrected {
+  background: var(--fix-bg);
+  border-left-color: var(--fix-ink);
+}
+
+.status-strip--page_corrected .status-strip__label {
+  color: var(--fix-ink);
+}
+
+.status-strip--needs_review {
+  background: var(--warn-bg);
+  border-left-color: var(--flag);
+}
+
+.status-strip--needs_review .status-strip__label {
+  color: var(--warn-ink);
+}
+
+.status-strip--not_found,
+.status-strip--manual {
+  background: var(--none-bg);
+  border-left-color: var(--none-ink);
+}
+
+.status-strip--not_found .status-strip__label,
+.status-strip--manual .status-strip__label {
+  color: var(--none-ink);
+}
+
 .evidence-panel__value {
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 15.5px;
+  line-height: 1.6;
 }
 
 .evidence-panel__quote {
-  padding-left: 10px;
-  border-left: 2px solid var(--line-strong);
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line-strong);
   font-size: 15.5px;
-  line-height: 1.55;
-}
-
-.evidence-panel__note {
-  margin-top: 4px;
-  color: var(--ink-soft);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.evidence-panel__reason {
-  margin-top: 4px;
-  color: var(--warn-ink);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.evidence-panel__toggle {
-  margin-top: 4px;
-  font-size: 13px;
+  line-height: 1.6;
 }
 
 .evidence-panel__translation {
-  margin-top: 2px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: 6px;
   font-size: 14px;
   line-height: 1.55;
 }
 
-.evidence-panel .button:disabled {
-  margin-top: 10px;
+.evidence-panel__original {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.evidence-panel__original summary {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.evidence-panel__original p {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.evidence-panel__note {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.evidence-panel__lead {
+  margin-top: 0;
+}
+
+.evidence-panel__tip {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .setup-field--next {
@@ -1730,17 +1894,50 @@ textarea {
   }
 
   .evidence-panel {
-    flex: 0 1 55%;
+    flex: 0 1 64%;
     width: auto;
-    padding: 10px 14px calc(16px + env(safe-area-inset-bottom));
+    overflow: hidden;
     border-top: 2px solid var(--sheet-line-strong);
     border-left: 0;
     border-radius: 14px 14px 0 0;
     box-shadow: var(--shadow-md);
   }
 
+  .evidence-panel__head {
+    padding: 10px 14px;
+  }
+
+  .evidence-panel h2 {
+    font-size: 16px;
+  }
+
+  .evidence-panel__eyebrow:not(:has(.evidence-panel__count)) {
+    display: none;
+  }
+
+  .evidence-panel__tip {
+    display: none;
+  }
+
+  .evidence-panel__paper {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .evidence-panel__body {
+    padding: 10px 14px 14px;
+  }
+
+  .evidence-panel__footer {
+    padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+  }
+
   .evidence-panel__close {
     min-height: 40px;
+  }
+
+  .format-bar__label {
+    display: none;
   }
 
   .sheet-footer span:last-child {
@@ -1809,15 +2006,12 @@ textarea {
   }
 }
 
-/* Thanh định dạng ở đầu khung bằng chứng */
-.format-bar {
-  position: sticky;
-  top: -12px;
-  z-index: 2;
-  margin: -12px -16px 10px;
-  padding: 8px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+/* Thanh định dạng ở đáy khung bằng chứng */
+.format-bar__label {
+  margin-bottom: 6px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .format-bar__row {
@@ -1940,40 +2134,32 @@ textarea {
   cursor: pointer;
 }
 
-.highlight-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  margin-top: 10px;
-}
-
 .highlight-tools__add {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 28px;
   padding: 2px 10px;
-  border: 1px solid var(--sheet-line);
-  font-size: 13.5px;
+  background: var(--highlight);
+  border: 1px solid var(--warn-ink);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .highlight-tools__mark {
-  width: 12px;
-  height: 12px;
-  background: var(--highlight);
-  border: 1px solid var(--line-strong);
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border: 1px solid var(--warn-ink);
   border-radius: 2px;
 }
 
 .highlight-tools__clear {
   font-size: 13px;
-}
-
-.evidence-panel__hint {
-  margin-top: 4px;
-  color: var(--ink-soft);
-  font-size: 12.5px;
 }
 
 /* Ghi chú Markdown */
@@ -1987,8 +2173,8 @@ textarea {
 }
 
 .markdown-view {
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 15.5px;
+  line-height: 1.6;
 }
 
 .note-editor textarea {
@@ -2028,8 +2214,8 @@ textarea {
 .tag-section__list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 2px 0 8px;
+  gap: 8px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -2065,15 +2251,21 @@ textarea {
 }
 
 .tag-section__form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.tag-section__form label {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .tag-section__form input {
-  flex: 1 1 140px;
-  padding: 4px 10px;
+  padding: 6px 10px;
   font-size: 14px;
 }
 
@@ -2096,9 +2288,14 @@ textarea {
 }
 
 .tag-section__form .button {
+  justify-self: start;
   min-height: 32px;
-  padding: 2px 10px;
+  padding: 2px 12px;
   font-size: 14px;
+}
+
+.tag-section__form .field-error {
+  margin: 0;
 }
 
 .sheet-footer__error {
