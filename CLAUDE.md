@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tình trạng dự án
 
-Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Đã đọc được chữ từng trang của file PDF và xuất được Excel. Chưa có AI, cơ sở dữ liệu và code kiểm tra câu trích.
+Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Đã đọc được chữ từng trang của file PDF và xuất được Excel. Đã gọi được Gemini trên máy chủ (`/api/dien-bang`), nhưng chưa nối vào giao diện vì chưa có code kiểm tra câu trích. Chưa có cơ sở dữ liệu.
 
 Lệnh:
 
@@ -36,6 +36,7 @@ Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 - Xuất Excel (`src/lib/export-xlsx.ts`, thư viện exceljs, chỉ tải khi bấm nút): xuất mọi bài, các cột đang hiện, theo thứ tự trên bảng; giữ in đậm, in nghiêng, gạch chân, màu chữ, màu nền ô và nền trạng thái; ghi chú thành chữ thường; ô cần kiểm tra có lời nhắc kèm theo trong ô. Ô có chữ bắt đầu bằng dấu "=" vẫn được ghi là chữ, không thành công thức.
 - Đọc PDF (`src/lib/pdf-read.ts`, thư viện pdf.js `pdfjs-dist`, Apache-2.0): đọc ngay trên trình duyệt, file không gửi lên máy chủ. Trả về chữ từng trang (`{ page, text }`, trang đếm từ 1 theo file, giữ xuống dòng). Báo lỗi tiếng Việt cho: không phải PDF (xem 1024 byte đầu, không tin đuôi file), file trống, quá 20 MB (chặn trước khi đọc), có mật khẩu mở file, bản scan, file hỏng. PDF chỉ khoá quyền sửa vẫn đọc được. Bản scan: dưới một nửa số trang có từ 20 chữ cái hoặc chữ số trở lên; hai số này là số tạm. Chữ đọc được nằm ở `ReviewSession.pages`, không lưu vào `localStorage`. File này không gắn với trình duyệt: `pdf-browser.ts` truyền pdf.js vào cho trang web, bài test truyền pdf.js chạy bằng Node.
 - Cắt tài liệu tham khảo (`src/lib/strip-references.ts`): luôn cắt trước khi gửi AI, để AI không trích câu trong danh mục tài liệu (code kiểm tra sẽ báo khớp dù lấy sai chỗ). Tìm tiêu đề References, Bibliography, Tài liệu tham khảo, 参考文献 đứng riêng một dòng trong 40% cuối bài; cắt đến tiêu đề phụ lục kế tiếp (Appendix, Phụ lục, 附录) hoặc đến hết bài; không thấy tiêu đề thì không cắt. Số trang giữ nguyên, trang bị cắt hết thành trang trống. Bước kiểm tra câu trích cũng dùng bản đã cắt. Sau khi cắt mà trên 100.000 ký tự thì báo "Bài quá dài" (số tạm).
+- Gọi AI điền bảng: `src/lib/ai-prompt.ts` (câu lệnh đã được người dùng duyệt, sửa lời dặn thì cho người dùng xem lại trước), `src/lib/ai-answer.ts` (kiểm tra câu trả lời đúng khuôn), `src/lib/ai-extract.ts` (cắt tài liệu tham khảo, gọi AI, sai khuôn thì gửi lại đúng một lần kèm lý do, đổi lỗi thành câu tiếng Việt), `src/lib/gemini.server.ts` (gọi Gemini, chỉ chạy trên máy chủ, log chỉ ghi mã lỗi và số giây), `src/app/api/dien-bang/route.ts`. Hết lượt hoặc quá tải (429, 503) thì báo "Hệ thống đang quá tải, vui lòng thử lại sau ít phút" kèm nút thử lại, không tự gửi lại. Test dùng câu trả lời giả, không gọi Gemini thật. Chạy thử thật thì mỗi bài chỉ gọi một lần để không tốn lượt miễn phí.
 - Bài mẫu để chạy thử nằm ở `samples/` (không đưa vào git).
 - `scripts/copy-pdfjs-assets.mjs` chạy trước `dev` và `build`, chép worker và bộ mã chữ (cMap, cần cho bài tiếng Trung, Nhật, Hàn) của pdf.js vào `public/pdfjs/` (không đưa vào git).
 - `src/test/make-pdf.ts`: tự dựng PDF mẫu cho test (có chữ, chỉ có ảnh, có mật khẩu theo chuẩn mã hoá RC4 40-bit), không lưu file nhị phân vào git. Chỉ có chữ Latin vì dùng phông Helvetica có sẵn.
@@ -156,6 +157,9 @@ Bản này chưa làm, nếu thấy cần phải hỏi người dùng trước:
 - Next.js
 - Tabulator cho bảng tổng hợp (đã dùng). AG Grid Community không có chọn vùng và copy; Handsontable chỉ miễn phí khi dùng phi thương mại.
 - Gemini bản miễn phí, tên model đặt trong biến môi trường để dễ đổi, không ghi cứng trong code
+  - Model đang dùng: `gemini-3.6-flash`, mức suy nghĩ `low` (đổi bằng `GEMINI_THINKING_LEVEL` nếu cần).
+  - `gemini-2.5-flash` đã ngừng cho người dùng mới (Google trả lỗi 404). `gemini-3.7-flash` và `gemini-3.8-flash` trả lời quá chậm với gói miễn phí, quá 30 giây cho một câu một chữ (thử ngày 8/11/2026). Có thể thử lại sau.
+  - Dự phòng nếu `gemini-3.6-flash` bị quá tải: `gemini-3.5-flash-lite` (nhanh hơn nhưng là bản rút gọn, dễ sai ở cột cần phân biệt tinh tế).
 - Supabase để lưu dữ liệu
 - Xuất file Excel bằng exceljs (MIT)
 

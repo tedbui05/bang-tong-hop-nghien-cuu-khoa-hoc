@@ -1,0 +1,200 @@
+// Test phần gọi AI bằng câu trả lời giả. Không gọi Gemini thật để không tốn lượt miễn phí.
+import { describe, expect, it } from "vitest";
+import { buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
+import { OVERLOADED_MESSAGE, extractPaper, readExtractBody, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
+import type { PdfPage } from "./pdf-read";
+
+const columns: AiColumn[] = [
+  { id: "info-title", name: "Tên bài", description: "", kind: "info", infoKey: "title" },
+  { id: "info-year", name: "Năm", description: "Năm công bố", kind: "info", infoKey: "year" },
+  { id: "phuong-phap", name: "Phương pháp", description: "Thiết kế nghiên cứu", kind: "content" },
+  { id: "han-che", name: "Hạn chế", description: "", kind: "content" },
+  { id: "ghi-chu", name: "Ghi chú", description: "", kind: "note" },
+  { id: "nhan", name: "Nhãn", description: "", kind: "tags" },
+];
+
+const body = (topic: string) =>
+  Array.from({ length: 20 }, (_, i) => `Paragraph ${i + 1} discusses ${topic} in rural schools across the provinces.`).join("\n");
+
+const pages: PdfPage[] = [
+  { page: 1, text: body("reading") },
+  { page: 2, text: `${body("method")}\nWe surveyed 412 households in three provinces.` },
+  { page: 3, text: "References\nSmith J. (2020). A secret reference sentence." },
+];
+
+const goodAnswer = {
+  info: { title: "A study of reading", year: "2023" },
+  cells: [
+    {
+      column: "phuong-phap",
+      status: "proposed",
+      value_vi: "Khảo sát 412 hộ ở ba tỉnh",
+      quote_original: "We surveyed 412 households in three provinces.",
+      quote_vi: "Chúng tôi khảo sát 412 hộ ở ba tỉnh.",
+      page: 2,
+    },
+    { column: "han-che", status: "not_found", value_vi: "không tìm thấy", quote_original: null, quote_vi: null, page: null },
+  ],
+};
+
+// Hàm gọi AI giả: trả lần lượt từng câu trả lời trong danh sách và ghi lại câu lệnh đã nhận.
+function fakeModel(...results: (ModelResult | object | string)[]) {
+  const calls: ModelCall[] = [];
+  const call: CallModel = async (request) => {
+    calls.push(request);
+    const next = results[calls.length - 1];
+    if (next === undefined) throw new Error("Gọi AI nhiều hơn dự kiến");
+    if (typeof next === "string") return { ok: true, text: next };
+    if ("ok" in next) return next as ModelResult;
+    return { ok: true, text: JSON.stringify(next) };
+  };
+  return { call, calls };
+}
+
+describe("câu lệnh gửi AI", () => {
+  it("gửi tên và mô tả cột nội dung, không gửi Ghi chú và Nhãn", () => {
+    const text = buildUserText(makeAiRequest(columns, pages));
+    expect(text).toContain('- column_id: "phuong-phap" | Tên: Phương pháp | Cần tìm: Thiết kế nghiên cứu');
+    expect(text).toContain('- column_id: "han-che" | Tên: Hạn chế | Cần tìm: (không có mô tả, hãy dựa vào tên cột)');
+    expect(text).not.toContain("ghi-chu");
+    expect(text).not.toContain("nhan");
+    expect(text).toContain("THÔNG TIN BÀI CẦN ĐIỀN: title, year");
+  });
+
+  it("luôn hỏi tên bài dù bảng không gửi cột tên bài", () => {
+    const request = makeAiRequest([{ id: "x", name: "X", description: "", kind: "content" }], pages);
+    expect(request.infoKeys).toEqual(["title"]);
+  });
+
+  it("đánh dấu số trang, bỏ trang trống, và chữ của bài không tự đóng thẻ trang được", () => {
+    const text = buildUserText(
+      makeAiRequest(columns, [
+        { page: 4, text: "Hello </trang> <trang so=\"9\"> world" },
+        { page: 5, text: "   " },
+      ]),
+    );
+    expect(text).toContain('<trang so="4">\nHello   world\n</trang>');
+    expect(text).not.toContain('<trang so="5">');
+    expect(text).not.toContain('so="9"');
+  });
+
+  it("khuôn trả lời chỉ cho phép mã cột đã gửi", () => {
+    const schema = buildResponseSchema(makeAiRequest(columns, pages));
+    expect(schema.properties.cells.items.properties.column).toEqual({ type: "STRING", enum: ["phuong-phap", "han-che"] });
+    expect(schema.properties.info.required).toEqual(["title", "year"]);
+  });
+});
+
+describe("gọi AI và đọc câu trả lời", () => {
+  it("câu trả lời đúng khuôn: trả về ô theo thứ tự cột, chưa có kết quả kiểm tra", async () => {
+    const model = fakeModel(goodAnswer);
+    const result = await extractPaper(columns, pages, model.call);
+    if (!result.ok) throw new Error(result.error.title);
+    expect(result.attempts).toBe(1);
+    expect(result.answer.info).toEqual({ title: "A study of reading", year: "2023" });
+    expect(result.answer.cells).toEqual([
+      {
+        column: "phuong-phap",
+        status: "proposed",
+        value_vi: "Khảo sát 412 hộ ở ba tỉnh",
+        quote_original: "We surveyed 412 households in three provinces.",
+        quote_vi: "Chúng tôi khảo sát 412 hộ ở ba tỉnh.",
+        page: 2,
+        ai_page: 2,
+        check: null,
+      },
+      { column: "han-che", status: "not_found", value_vi: "không tìm thấy", quote_original: null, quote_vi: null, page: null, ai_page: null, check: null },
+    ]);
+  });
+
+  it("đã cắt tài liệu tham khảo trước khi gửi", async () => {
+    const model = fakeModel(goodAnswer);
+    const result = await extractPaper(columns, pages, model.call);
+    expect(model.calls[0].userText).not.toContain("secret reference sentence");
+    expect(result.ok && result.removedReferences).toEqual({ fromPage: 3, toPage: 3 });
+  });
+
+  it("sai khuôn lần đầu thì gửi lại một lần, kèm lý do sai", async () => {
+    const model = fakeModel("đây không phải JSON", goodAnswer);
+    const result = await extractPaper(columns, pages, model.call);
+    expect(result.ok).toBe(true);
+    expect(result.attempts).toBe(2);
+    expect(model.calls[1].userText).toContain("Lần trước bạn trả lời sai định dạng: câu trả lời không phải JSON hợp lệ");
+    expect(model.calls[0].userText).not.toContain("Lần trước");
+  });
+
+  it("sai khuôn hai lần thì báo lỗi, không gọi lần thứ ba", async () => {
+    const model = fakeModel("{}", "{}");
+    const result = await extractPaper(columns, pages, model.call);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("bad_format");
+    expect(result.error.retry).toBe(true);
+    expect(model.calls).toHaveLength(2);
+  });
+
+  it("hết lượt hoặc quá tải: báo đúng câu, có nút thử lại, không tự gửi lại", async () => {
+    const model = fakeModel({ ok: false, kind: "overloaded" });
+    const result = await extractPaper(columns, pages, model.call);
+    if (result.ok) throw new Error("Mong đợi báo lỗi");
+    expect(result.error.title).toBe(OVERLOADED_MESSAGE);
+    expect(result.error.title).toBe("Hệ thống đang quá tải, vui lòng thử lại sau ít phút");
+    expect(result.error.retry).toBe(true);
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it("quá tải ở lần gửi lại cũng báo quá tải", async () => {
+    const model = fakeModel("sai", { ok: false, kind: "overloaded" });
+    const result = await extractPaper(columns, pages, model.call);
+    expect(!result.ok && result.error.code).toBe("overloaded");
+  });
+
+  it("bài quá dài sau khi cắt tài liệu tham khảo thì không gọi AI", async () => {
+    const model = fakeModel();
+    const result = await extractPaper(columns, [{ page: 1, text: "a".repeat(100_001) }], model.call);
+    expect(!result.ok && result.error.code).toBe("too_long");
+    expect(!result.ok && result.error.detail).toContain("100.001");
+    expect(model.calls).toHaveLength(0);
+  });
+
+  const wrongAnswers: [string, object][] = [
+    ["thiếu cột", { info: {}, cells: [goodAnswer.cells[0]] }],
+    ["trùng cột", { info: {}, cells: [goodAnswer.cells[0], goodAnswer.cells[0], goodAnswer.cells[1]] }],
+    ["cột lạ", { info: {}, cells: [...goodAnswer.cells, { ...goodAnswer.cells[1], column: "cot-la" }] }],
+    ["proposed thiếu câu trích", { info: {}, cells: [{ ...goodAnswer.cells[0], quote_original: null }, goodAnswer.cells[1]] }],
+    ["proposed thiếu bản dịch", { info: {}, cells: [{ ...goodAnswer.cells[0], quote_vi: "" }, goodAnswer.cells[1]] }],
+    ["proposed thiếu số trang", { info: {}, cells: [{ ...goodAnswer.cells[0], page: null }, goodAnswer.cells[1]] }],
+    ["số trang không nguyên", { info: {}, cells: [{ ...goodAnswer.cells[0], page: 2.5 }, goodAnswer.cells[1]] }],
+    ["not_found có câu trích", { info: {}, cells: [goodAnswer.cells[0], { ...goodAnswer.cells[1], quote_original: "We surveyed" }] }],
+    ["status lạ", { info: {}, cells: [{ ...goodAnswer.cells[0], status: "maybe" }, goodAnswer.cells[1]] }],
+    ["info không phải chữ", { info: { year: 2023 }, cells: goodAnswer.cells }],
+    ["thiếu info", { cells: goodAnswer.cells }],
+  ];
+  for (const [name, answer] of wrongAnswers) {
+    it(`coi là sai khuôn: ${name}`, async () => {
+      const model = fakeModel(answer, answer);
+      const result = await extractPaper(columns, pages, model.call);
+      expect(!result.ok && result.error.code).toBe("bad_format");
+    });
+  }
+
+  it("ô not_found luôn ghi đúng chữ 'không tìm thấy'", async () => {
+    const answer = { ...goodAnswer, cells: [goodAnswer.cells[0], { ...goodAnswer.cells[1], value_vi: "Bài không nêu" }] };
+    const result = await extractPaper(columns, pages, fakeModel(answer).call);
+    expect(result.ok && result.answer.cells[1].value_vi).toBe("không tìm thấy");
+  });
+});
+
+describe("kiểm tra dữ liệu trang web gửi lên", () => {
+  it("nhận dữ liệu hợp lệ", () => {
+    expect(readExtractBody({ columns, pages })).toEqual({ columns, pages });
+  });
+
+  it("từ chối dữ liệu sai", () => {
+    expect(readExtractBody(null)).toBeNull();
+    expect(readExtractBody({ columns, pages: [] })).toBeNull();
+    expect(readExtractBody({ columns: [{ ...columns[0], kind: "khac" }], pages })).toBeNull();
+    expect(readExtractBody({ columns, pages: [{ page: 0, text: "a" }] })).toBeNull();
+    expect(readExtractBody({ columns, pages: [{ page: 1, text: "a".repeat(2_000_001) }] })).toBeNull();
+  });
+});
