@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tình trạng dự án
 
-Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Chưa có AI, cơ sở dữ liệu, code kiểm tra câu trích và test tự động. Đã xuất được Excel.
+Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Đã đọc được chữ từng trang của file PDF và xuất được Excel. Chưa có AI, cơ sở dữ liệu và code kiểm tra câu trích.
 
-Lệnh (lệnh test sẽ bổ sung khi có test):
+Lệnh:
 
 - Chạy trên máy: `npm run dev`, rồi mở http://localhost:3000
 - Build: `npm run build`
 - Lint: `npm run lint`
+- Test: `npm test` (vitest, file `*.test.ts` nằm cạnh code trong `src/`)
 
 ## Kiến trúc
 
@@ -33,6 +34,9 @@ Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 - Cột Ghi chú (`kind: "note"`, Markdown, `src/lib/markdown.ts`) và cột Nhãn (`kind: "tags"`, nhãn nằm ở `SheetTable.tags`): sinh viên tự viết, AI không bao giờ điền. Bộ đọc Markdown tự viết, không dựng HTML từ chữ người dùng, chỉ nhận link `http`, `https`, `mailto`.
 - Định dạng, tô màu, tô sáng, ghi chú, nhãn không ghi thao tác `o_bi_sua`. Chỉ đổi nội dung một ô do AI đề xuất mới tính là sửa.
 - Xuất Excel (`src/lib/export-xlsx.ts`, thư viện exceljs, chỉ tải khi bấm nút): xuất mọi bài, các cột đang hiện, theo thứ tự trên bảng; giữ in đậm, in nghiêng, gạch chân, màu chữ, màu nền ô và nền trạng thái; ghi chú thành chữ thường; ô cần kiểm tra có lời nhắc kèm theo trong ô. Ô có chữ bắt đầu bằng dấu "=" vẫn được ghi là chữ, không thành công thức.
+- Đọc PDF (`src/lib/pdf-read.ts`, thư viện pdf.js `pdfjs-dist`, Apache-2.0): đọc ngay trên trình duyệt, file không gửi lên máy chủ. Trả về chữ từng trang (`{ page, text }`, trang đếm từ 1 theo file, giữ xuống dòng). Báo lỗi tiếng Việt cho: không phải PDF (xem 1024 byte đầu, không tin đuôi file), file trống, quá 20 MB (chặn trước khi đọc), có mật khẩu mở file, bản scan, file hỏng. PDF chỉ khoá quyền sửa vẫn đọc được. Bản scan: dưới một nửa số trang có từ 20 chữ cái hoặc chữ số trở lên; hai số này là số tạm. Chữ đọc được nằm ở `ReviewSession.pages`, không lưu vào `localStorage`. File này không gắn với trình duyệt: `pdf-browser.ts` truyền pdf.js vào cho trang web, bài test truyền pdf.js chạy bằng Node.
+- `scripts/copy-pdfjs-assets.mjs` chạy trước `dev` và `build`, chép worker và bộ mã chữ (cMap, cần cho bài tiếng Trung, Nhật, Hàn) của pdf.js vào `public/pdfjs/` (không đưa vào git).
+- `src/test/make-pdf.ts`: tự dựng PDF mẫu cho test (có chữ, chỉ có ảnh, có mật khẩu theo chuẩn mã hoá RC4 40-bit), không lưu file nhị phân vào git. Chỉ có chữ Latin vì dùng phông Helvetica có sẵn.
 - `src/lib/types.ts`: kiểu dữ liệu theo skill `citation-check`.
 - `src/lib/events.ts`: ghi thao tác, hiện chỉ in ra console.
 - `PreviewBar` và `?trang-thai=dang-tai|loi|trong`: chỉ để xem thử trạng thái, bỏ khi nối dữ liệu thật.
@@ -129,6 +133,7 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 - Khi làm code kiểm tra thật, hai điều đã thấy trên bài thật có thể làm câu đúng thành "cần kiểm tra": PDF tiếng Trung chèn khoảng trắng vào giữa câu và tách chữ Latin (ví dụ "Ｓｔｉ ｇ ｌｅｒ"); từ ghép có gạch nối thật bị ngắt cuối dòng ("high-" rồi "poverty") bị nối thành "highpoverty" nên không khớp câu trích "high-poverty". Cần thử rồi quyết định cách xử lý.
 - Số trang trong file PDF có thể lệch với số in trên trang: giao diện đang ghi "trang X của file PDF". Thử trên bài thật rồi quyết định có hiện thêm số in không.
 - Xuất Excel đang bỏ cột ẩn và giữ mọi bài dù đang lọc: hỏi lại người dùng sau buổi thử thật.
+- Ngưỡng nhận biết bản scan (20 chữ mỗi trang, một nửa số trang) và giới hạn 20 MB: thử trên bài thật rồi chỉnh. Chưa thử trên PDF tiếng Trung, tiếng Việt thật vì máy chưa có file bài gốc.
 - exceljs kéo theo hai thư viện có cảnh báo mức trung bình (`uuid`, `minimatch`): chỉ chạy trên trình duyệt khi xuất file, không nhận dữ liệu từ bên ngoài. Xem lại khi exceljs có bản mới.
 
 ## Ghi chú để đưa vào README sau này

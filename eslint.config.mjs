@@ -4,7 +4,7 @@ import nextTypescript from "eslint-config-next/typescript";
 const config = [
   ...nextVitals,
   ...nextTypescript,
-  { ignores: [".next/**", "node_modules/**", ".agents/**", ".claude/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "node_modules/**", ".agents/**", ".claude/**", "next-env.d.ts", "public/pdfjs/**"] },
 ];
 
 export default config;

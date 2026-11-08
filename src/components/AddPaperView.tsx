@@ -4,16 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { hasContentColumn, isOwnColumn } from "@/lib/columns";
+import { readPdfInBrowser } from "@/lib/pdf-browser";
+import { MAX_PDF_BYTES, checkPdfFile, formatMegabytes, type PdfError } from "@/lib/pdf-read";
 import type { PreviewState } from "@/lib/preview-state";
 import { useStore } from "@/lib/store";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 
-const FAKE_READING_MS = 1500;
 const PRIVACY_NOTE = "Chỉ tải lên bài báo đã công bố. Không tải tài liệu mật hoặc chưa công bố.";
-
-function isPdf(file: File) {
-  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-}
 
 export function AddPaperView({ state }: { state: PreviewState }) {
   // Đổi trạng thái xem thử thì dựng lại form từ đầu.
@@ -25,46 +22,60 @@ function AddPaperContent({ state }: { state: PreviewState }) {
   const { activeTable, startReview, hydrated } = useStore();
   const table = state === "trong" ? null : activeTable;
   const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<Pick<PdfError, "title" | "detail"> | null>(null);
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mỗi lần chọn file hoặc rời trang thì tăng lên, để kết quả của lần đọc cũ không ghi đè lần mới.
+  const attempt = useRef(0);
 
   useEffect(() => {
+    const counter = attempt;
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      counter.current++;
     };
   }, []);
 
-  function chooseFiles(files: FileList | null) {
+  async function chooseFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    const current = ++attempt.current;
     if (files.length > 1) {
       setFile(null);
-      setFileError(`Bạn vừa chọn ${files.length} file. Mỗi lần chỉ nhận một bài báo, hãy chọn lại một file.`);
+      setFileError({
+        title: `Bạn vừa chọn ${files.length} file`,
+        detail: "Mỗi lần chỉ nhận một bài báo, hãy chọn lại một file.",
+      });
       return;
     }
-    if (!isPdf(files[0])) {
-      setFile(null);
-      setFileError(`“${files[0].name}” không phải file PDF. Hãy chọn một file PDF.`);
-      return;
-    }
-    setFile(files[0]);
-    setFileError(null);
+    const chosen = files[0];
+    // Kiểm tra nhanh loại file và dung lượng ngay khi chọn, chưa đọc cả file.
+    const problem = await checkPdfFile(chosen).catch(() => null);
+    if (current !== attempt.current) return;
+    setFile(problem ? null : chosen);
+    setFileError(problem);
   }
 
   function handleDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    chooseFiles(event.dataTransfer.files);
+    void chooseFiles(event.dataTransfer.files);
   }
 
-  function startReading() {
+  async function startReading() {
     if (!file || !table || !hydrated || !hasContentColumn(table.columns)) return;
+    const current = ++attempt.current;
     setReading(true);
-    timer.current = setTimeout(() => {
-      startReview(file.name);
-      router.push("/duyet-bai");
-    }, FAKE_READING_MS);
+    setFileError(null);
+    const result = await readPdfInBrowser(file);
+    if (current !== attempt.current) return;
+    if (!result.ok) {
+      setReading(false);
+      setFile(null);
+      setFileError(result.error);
+      return;
+    }
+    // Chưa nối AI: trang duyệt vẫn hiện bài mẫu, chữ từng trang được giữ để làm bước kiểm tra câu trích.
+    startReview(file.name, result.pages);
+    router.push("/duyet-bai");
   }
 
   return (
@@ -117,7 +128,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
               className="visually-hidden"
               aria-describedby={fileError ? "loi-file privacy-note" : "privacy-note"}
               onChange={(event) => {
-                chooseFiles(event.target.files);
+                void chooseFiles(event.target.files);
                 event.target.value = "";
               }}
             />
@@ -129,14 +140,14 @@ function AddPaperContent({ state }: { state: PreviewState }) {
             ) : (
               <>
                 <strong>Kéo thả file PDF vào đây</strong>
-                <span>hoặc bấm để chọn từ máy</span>
+                <span>hoặc bấm để chọn từ máy. Một file PDF, tối đa {formatMegabytes(MAX_PDF_BYTES)}.</span>
               </>
             )}
           </label>
 
           {fileError ? (
             <p id="loi-file" className="field-error" role="alert">
-              {fileError}
+              <strong>{fileError.title}.</strong> {fileError.detail}
             </p>
           ) : null}
 
@@ -150,7 +161,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
                 type="button"
                 className="button button--primary"
                 disabled={!hydrated || !hasContentColumn(table.columns)}
-                onClick={startReading}
+                onClick={() => void startReading()}
               >
                 Đọc bài báo
               </button>

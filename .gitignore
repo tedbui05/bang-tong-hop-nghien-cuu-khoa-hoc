@@ -17,3 +17,6 @@ next-env.d.ts
 
 # File tạm của Python khi chạy script trong skill
 __pycache__/
+
+# File của pdf.js, chép tự động từ node_modules khi chạy app
+public/pdfjs/
