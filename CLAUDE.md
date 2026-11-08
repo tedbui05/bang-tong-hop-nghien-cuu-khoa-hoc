@@ -130,6 +130,12 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 - **Bật đăng nhập ẩn danh:** khi đến bước làm cơ sở dữ liệu, hướng dẫn người dùng bật tính năng này trong trang quản lý Supabase.
 - **Quyền riêng tư:** màn hình tải bài hiện dòng: "Chỉ tải lên bài báo đã công bố. Không tải tài liệu mật hoặc chưa công bố."
 
+## Việc cần làm sau
+
+- Chạy 3 bài trong `samples/` bằng `gemini-3.6-flash`, mỗi bài một lần, khi máy chủ Gemini gói miễn phí bớt tải (ngày 8/11/2026 bị 503 và treo quá 30 giây suốt 21:25 đến 21:35). Thử một câu ngắn trước, được rồi mới chạy bài.
+- Sau khi chạy: kiểm tra bẫy ở cột Hạn chế của bài tiếng Việt (mục 3.2.2 nói hạn chế của doanh nghiệp, không phải hạn chế của nghiên cứu, nên câu đúng là "không tìm thấy"), các ô lấy kết quả của nghiên cứu khác, các ô trích từ tóm tắt hoặc từ bảng. Bài nào sai ở mức `low` thì chạy lại riêng bài đó với `GEMINI_THINKING_LEVEL=medium` để so sánh.
+- Lần chạy thử đường đi bằng `gemini-3.5-flash-lite` (bài tiếng Việt, 8/11/2026) chạy thông nhưng đã rơi vào bẫy cột Hạn chế, lấy kết quả của Vietnam Report cho cột Kết quả, lấy tên bài và ngôn ngữ theo trang tóm tắt tiếng Anh. Kết quả nằm trong `samples/ket-qua-gemini.json`.
+
 ## Việc cần quyết định sau
 
 - Đầu trang và chân trang xen giữa câu vắt qua hai trang: thử trên bài thật rồi quyết định có xử lý thêm không. Hiện những câu này sẽ thành "cần kiểm tra".
