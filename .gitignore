@@ -20,3 +20,6 @@ __pycache__/
 
 # File của pdf.js, chép tự động từ node_modules khi chạy app
 public/pdfjs/
+
+# Bài báo mẫu để chạy thử, không đưa vào git
+samples/
