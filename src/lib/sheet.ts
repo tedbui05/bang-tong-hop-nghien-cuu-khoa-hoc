@@ -72,9 +72,9 @@ export function splitMatches(text: string, query: string): TextPart[] {
   return parts;
 }
 
-export function paperMatches(paper: SavedPaper, needle: string): boolean {
+export function paperMatches(paper: SavedPaper, needle: string, tagNames: string[] = []): boolean {
   if (!needle) return true;
-  const fields = [...Object.values(paper.info), ...paper.cells.map((cell) => cell.value_vi)];
+  const fields = [...Object.values(paper.info), ...paper.cells.map((cell) => cell.value_vi), paper.note ?? "", ...tagNames];
   return fields.some((field) => foldText(field).includes(needle));
 }
 

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { PREVIEW_STATES, type PreviewState } from "@/lib/preview-state";
+import { ResetDataButton } from "./ResetDataButton";
 
 // Thanh này chỉ dùng cho bản xem thử, sẽ bỏ khi nối dữ liệu thật.
 export function PreviewBar({ path, state }: { path: string; state: PreviewState }) {
   return (
     <aside className="preview-bar" aria-label="Thông tin bản xem thử">
       <p>Bản xem thử, dùng dữ liệu mẫu. Nhãn được gán sẵn, chưa phải kết quả kiểm tra thật.</p>
+      <ResetDataButton />
       <details className="preview-states" open={state !== "binh-thuong"}>
         <summary>Xem thử trạng thái</summary>
         <nav aria-label="Xem thử trạng thái màn hình">

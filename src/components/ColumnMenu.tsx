@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { checkColumnName, countColumnData, countUnfilled, TITLE_COLUMN_ID } from "@/lib/columns";
+import { checkColumnName, countColumnData, countUnfilled, isOwnColumn, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { SavedPaper, TableColumn } from "@/lib/types";
 import type { SheetSort } from "./SheetGrid";
 
@@ -135,10 +135,10 @@ export function ColumnMenu(props: Props) {
         <>
           <p className="column-menu__head">
             <strong>{column.name}</strong>
-            <span>{column.description ? `AI cần tìm: ${column.description}` : "Chưa có mô tả cho AI."}</span>
+            <span>{isOwnColumn(column) ? column.description : column.description ? `AI cần tìm: ${column.description}` : "Chưa có mô tả cho AI."}</span>
           </p>
           {item("Đổi tên", () => open("rename", column.name))}
-          {item("Sửa mô tả", () => open("describe", column.description))}
+          {!isOwnColumn(column) ? item("Sửa mô tả", () => open("describe", column.description)) : null}
           <hr />
           {item(sorted === "asc" ? "Sắp xếp A đến Z (đang dùng)" : "Sắp xếp A đến Z", run(() => onSort({ field: column.id, dir: "asc" })))}
           {item(sorted === "desc" ? "Sắp xếp Z đến A (đang dùng)" : "Sắp xếp Z đến A", run(() => onSort({ field: column.id, dir: "desc" })))}

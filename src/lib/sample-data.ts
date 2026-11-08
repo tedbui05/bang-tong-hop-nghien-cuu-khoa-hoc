@@ -1,4 +1,4 @@
-import { suggestedColumns } from "./columns";
+import { isOwnColumn, suggestedColumns } from "./columns";
 import type { AiCell, Paper, PaperInfo, ReviewCell, SavedPaper, SheetTable } from "./types";
 
 // Dữ liệu mẫu lấy từ các bài báo có thật. Mọi câu trích đều chép nguyên văn từ file PDF và đã được
@@ -529,7 +529,7 @@ export const sampleTable: SheetTable = {
   name: "Bảng mẫu",
   description: "Dữ liệu minh hoạ từ 7 bài báo thật về tín dụng vi mô, việc làm và chính sách.",
   columns: [
-    ...suggestedColumns(),
+    ...suggestedColumns().filter((column) => !isOwnColumn(column)),
     {
       id: CUSTOM_COLUMN,
       name: "Số liệu tại Việt Nam",
@@ -537,6 +537,8 @@ export const sampleTable: SheetTable = {
       kind: "content",
       visible: true,
     },
+    ...suggestedColumns().filter(isOwnColumn),
   ],
+  tags: [],
   papers: samplePapers,
 };

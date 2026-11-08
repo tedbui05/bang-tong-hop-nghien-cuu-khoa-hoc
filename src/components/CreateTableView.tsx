@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import {
   checkColumnName,
   checkTableName,
+  isOwnColumn,
   hasContentColumn,
   moveColumn,
   newContentColumn,
@@ -109,7 +110,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
   }
 
   const removedInfo = removedInfoColumns(columns);
-  const missingDescriptions = columns.filter((column) => !column.description.trim()).length;
+  const missingDescriptions = columns.filter((column) => !isOwnColumn(column) && !column.description.trim()).length;
 
   return (
     <main id="noi-dung" className="page page--narrow">
@@ -177,7 +178,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
                   <div className="setup-row__fields">
                     <div className="setup-row__name">
                       <label htmlFor={`ten-${column.id}`}>Tên cột</label>
-                      {isTitle ? <span className="setup-tag">Bắt buộc</span> : column.kind === "info" ? <span className="setup-tag">Thông tin bài</span> : null}
+                      {isTitle ? <span className="setup-tag">Bắt buộc</span> : column.kind === "info" ? <span className="setup-tag">Thông tin bài</span> : isOwnColumn(column) ? <span className="setup-tag">AI không điền</span> : null}
                     </div>
                     <input
                       id={`ten-${column.id}`}
@@ -195,6 +196,10 @@ function CreateTableForm({ state }: { state: PreviewState }) {
                         {error}
                       </p>
                     ) : null}
+                    {isOwnColumn(column) ? (
+                      <p className="setup-row__own">{column.description}</p>
+                    ) : (
+                      <>
                     <label htmlFor={`mo-ta-${column.id}`}>AI cần tìm gì cho cột này</label>
                     <input
                       id={`mo-ta-${column.id}`}
@@ -205,6 +210,8 @@ function CreateTableForm({ state }: { state: PreviewState }) {
                       value={column.description}
                       onChange={(event) => changeColumn(column.id, { description: event.target.value })}
                     />
+                      </>
+                    )}
                   </div>
                   <div className="setup-row__actions">
                     <button

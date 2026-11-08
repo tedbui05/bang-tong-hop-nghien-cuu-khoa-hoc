@@ -4,18 +4,22 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import type { CellComponent, ColumnDefinition, Options, RowComponent, Tabulator } from "tabulator-tables";
 import "tabulator-tables/dist/css/tabulator.min.css";
 import "@/app/sheet.css";
+import { effectiveFill, formatOf } from "@/lib/cell-format";
 import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
+import { markdownToDom } from "@/lib/markdown";
 import { cellMatchesFilter, foldText, paperMatches, splitMatches, STATUS_ICON_PATHS, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
-import { getLabelKey, isCellEdited, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn } from "@/lib/types";
+import { getLabelKey, isCellEdited, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 
 export type SheetSort = { field: string; dir: "asc" | "desc" };
 
-export type SheetSelection = { paperId: string; field: string; count: number };
+export type SheetSelection = { paperId: string; field: string; count: number; cells: { paperId: string; columnId: string }[] };
 
 type Props = {
   papers: SavedPaper[];
   columns: TableColumn[];
+  tags: TableTag[];
+  tagFilter: string;
   query: string;
   statusFilter: StatusFilter;
   columnFilters: Record<string, string>;
@@ -66,7 +70,10 @@ export function SheetGrid(props: Props) {
   const [loadFailed, setLoadFailed] = useState(false);
   // Thư viện tự chọn ô đầu tiên khi dựng bảng: chỉ mở thanh bằng chứng khi người dùng thật sự thao tác.
   const interacted = useRef(false);
-  const editedRow = useRef<RowComponent | null>(null);
+  // Đang giữ chuột để kéo chọn vùng: chờ thả chuột mới mở khung bằng chứng, vì khung mở ra
+  // làm bảng hẹp lại và các ô dịch chỗ ngay dưới con trỏ.
+  const dragging = useRef(false);
+  const shownPapers = useRef(props.papers);
   const latest = useRef(props);
   const appliedColumns = useRef(columnSignature(props.columns));
 
@@ -78,6 +85,7 @@ export function SheetGrid(props: Props) {
   useEffect(() => {
     let cancelled = false;
     let table: Tabulator | null = null;
+    let removeDragListener = () => {};
 
     import("tabulator-tables")
       .then(({ TabulatorFull }) => {
@@ -88,7 +96,7 @@ export function SheetGrid(props: Props) {
           height: "100%",
           layout: "fitData",
           index: "id",
-          data: papers.map((paper) => toRow(paper, columns)),
+          data: papers.map((paper) => toRow(paper, columns, latest.current.tags)),
           placeholder: () => emptyMessage(latest),
           movableColumns: true,
           rowHeader: {
@@ -164,13 +172,12 @@ export function SheetGrid(props: Props) {
         });
 
         built.on("cellEdited", (cell: CellComponent) => {
-          editedRow.current = cell.getRow();
           const column = latest.current.columns.find((item) => item.id === cell.getField());
           if (column) latest.current.onEdit(String(cell.getRow().getIndex()), column, String(cell.getValue()));
         });
 
         const emit = (ranges: { getCells: () => CellComponent[][] }[]) => {
-          if (!interacted.current) return;
+          if (!interacted.current || dragging.current) return;
           const cells = ranges[0]?.getCells().flat().filter((cell) => cell.getField()) ?? [];
           if (cells.length === 0) return;
           revealCell(cells[0]);
@@ -178,11 +185,18 @@ export function SheetGrid(props: Props) {
             paperId: String(cells[0].getRow().getIndex()),
             field: cells[0].getField(),
             count: cells.length,
+            cells: cells.map((cell) => ({ paperId: String(cell.getRow().getIndex()), columnId: cell.getField() })),
           });
         };
-        (built as unknown as { on: (name: string, fn: (range: unknown) => void) => void }).on("rangeChanged", () => {
-          emit((built as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] }).getRanges());
-        });
+        const emitCurrent = () => emit((built as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] }).getRanges());
+        (built as unknown as { on: (name: string, fn: (range: unknown) => void) => void }).on("rangeChanged", emitCurrent);
+        const endDrag = () => {
+          if (!dragging.current) return;
+          dragging.current = false;
+          emitCurrent();
+        };
+        window.addEventListener("mouseup", endDrag);
+        removeDragListener = () => window.removeEventListener("mouseup", endDrag);
       })
       .catch(() => {
         if (!cancelled) setLoadFailed(true);
@@ -190,26 +204,37 @@ export function SheetGrid(props: Props) {
 
     return () => {
       cancelled = true;
+      removeDragListener();
       tableRef.current = null;
       table?.destroy();
     };
     // Chỉ dựng một lần; dữ liệu mới đi qua latest và các effect bên dưới.
   }, []);
 
-  // Sửa một ô xong thì chỉ vẽ lại dòng đó, không mất vùng đang chọn.
+  // Bài nào đổi nội dung hay định dạng thì chỉ vẽ lại dòng đó, không mất vùng đang chọn.
   useEffect(() => {
-    editedRow.current?.reformat();
-    editedRow.current = null;
-  }, [props.papers]);
+    const table = tableRef.current;
+    const before = shownPapers.current;
+    shownPapers.current = props.papers;
+    if (!ready || !table || before === props.papers) return;
+    props.papers.forEach((paper) => {
+      if (before.find((item) => item.id === paper.id) === paper) return;
+      const row = table.getRow(paper.id);
+      if (!row) return;
+      // Dữ liệu dòng cũng phải mới để sắp xếp, lọc và ô sửa dùng đúng chữ.
+      void row.update(toRow(paper, latest.current.columns, latest.current.tags));
+      row.reformat();
+    });
+  }, [ready, props.papers]);
 
   // Tìm kiếm và lọc.
-  const { query, statusFilter, columnFilters } = props;
+  const { query, statusFilter, columnFilters, tagFilter } = props;
   useEffect(() => {
     const table = tableRef.current;
     if (!ready || !table) return;
     table.refreshFilter();
     table.getRows("active").forEach((row) => row.reformat());
-  }, [ready, query, statusFilter, columnFilters]);
+  }, [ready, query, statusFilter, columnFilters, tagFilter]);
 
   // Hiện đủ chữ và phóng to làm đổi chiều cao dòng nên phải vẽ lại.
   const { wrap, zoom } = props;
@@ -232,7 +257,7 @@ export function SheetGrid(props: Props) {
     const holder = table.element.querySelector(".tabulator-tableholder");
     const scrollLeft = holder?.scrollLeft ?? 0;
     table.setColumns(buildColumns(columns, latest));
-    void table.replaceData(papers.map((paper) => toRow(paper, columns))).then(() => {
+    void table.replaceData(papers.map((paper) => toRow(paper, columns, latest.current.tags))).then(() => {
       if (tableRef.current !== table) return;
       refreshLetters(table);
       if (holder) holder.scrollLeft = scrollLeft;
@@ -320,8 +345,10 @@ export function SheetGrid(props: Props) {
       <div
         className={`sheet-host${wrap ? " sheet-host--wrap" : ""}${props.hasSelection ? "" : " sheet-host--idle"}`}
         style={{ ["--sheet-zoom" as string]: zoom }}
-        onMouseDownCapture={() => {
+        onMouseDownCapture={(event) => {
           interacted.current = true;
+          // Chỉ kéo chọn khi nhấn trong vùng ô; nhấn vào tiêu đề cột hay thanh cuộn thì không.
+          if (event.button === 0 && (event.target as HTMLElement).closest(".tabulator-tableholder")) dragging.current = true;
         }}
         onTouchStartCapture={() => {
           interacted.current = true;
@@ -401,10 +428,10 @@ function refreshLetters(table: Tabulator) {
     });
 }
 
-function toRow(paper: SavedPaper, columns: TableColumn[]) {
+function toRow(paper: SavedPaper, columns: TableColumn[], tags: TableTag[]) {
   const row: Record<string, string> = { id: paper.id };
   columns.forEach((column) => {
-    row[column.id] = cellText(paper, column);
+    row[column.id] = cellText(paper, column, tags);
   });
   return row;
 }
@@ -416,13 +443,15 @@ function findPaper(id: string, papers: SavedPaper[]) {
 function rowMatches(id: string, props: Props): boolean {
   const paper = findPaper(id, props.papers);
   if (!paper) return false;
-  if (!paperMatches(paper, foldText(props.query))) return false;
+  const tagNames = (paper.tags ?? []).map((id) => props.tags.find((tag) => tag.id === id)?.name ?? "");
+  if (!paperMatches(paper, foldText(props.query), tagNames)) return false;
+  if (props.tagFilter && !(paper.tags ?? []).includes(props.tagFilter)) return false;
   if (props.statusFilter !== "all" && !paper.cells.some((cell) => getLabelKey(cell) === props.statusFilter)) return false;
   return Object.entries(props.columnFilters).every(([field, value]) => {
     const needle = foldText(value);
     if (!needle) return true;
     const column = props.columns.find((item) => item.id === field);
-    return column ? foldText(cellText(paper, column)).includes(needle) : true;
+    return column ? foldText(cellText(paper, column, props.tags)).includes(needle) : true;
   });
 }
 
@@ -439,11 +468,16 @@ function buildColumns(columns: TableColumn[], latest: RefObject<Props>): ColumnD
       hozAlign: column.infoKey === "year" ? "right" : "left",
       width: column.width ?? defaultWidth(column, phone),
       titleFormatter: () => headerTitle(column, latest),
-      formatter: (cell: CellComponent) => (isTitle ? formatTitle(cell, latest) : formatData(cell, column, latest)),
+      formatter: (cell: CellComponent) => {
+        const content = isTitle ? formatTitle(cell, latest) : formatData(cell, column, latest);
+        applyFormat(cell, column, latest);
+        return content;
+      },
       // Bấm tiêu đề là mở menu; sắp xếp nằm trong menu.
       headerSort: false,
       sorter: (a: string, b: string) => a.localeCompare(b, "vi", { numeric: true }),
-      editor: isTitle ? undefined : overlayEditor,
+      // Tên bài không sửa trong bảng; nhãn chọn trong khung bên phải; ghi chú sửa được nhiều dòng.
+      editor: isTitle || column.kind === "tags" ? undefined : column.kind === "note" ? noteEditor : overlayEditor,
     };
   }) as unknown as ColumnDefinition[];
 }
@@ -494,6 +528,21 @@ function formatTitle(cell: CellComponent, latest: RefObject<Props>) {
   return title;
 }
 
+// Định dạng do sinh viên tự làm. Ô đã tô màu thì bỏ nền trạng thái, trạng thái chỉ còn biểu tượng ở góc.
+function applyFormat(cell: CellComponent, column: TableColumn, latest: RefObject<Props>) {
+  const element = cell.getElement();
+  const paper = findPaper(String(cell.getRow().getIndex()), latest.current.papers);
+  const format = paper ? formatOf(paper, column.id) : {};
+  const fill = paper ? effectiveFill(paper, column.id) : null;
+  [...element.classList].filter((name) => /^sheet-(fill|tc)--/.test(name)).forEach((name) => element.classList.remove(name));
+  element.classList.toggle("sheet-cell--bold", Boolean(format.bold));
+  element.classList.toggle("sheet-cell--italic", Boolean(format.italic));
+  element.classList.toggle("sheet-cell--underline", Boolean(format.underline));
+  element.classList.toggle("sheet-cell--filled", Boolean(fill));
+  if (fill) element.classList.add(`sheet-fill--${fill}`);
+  if (format.color) element.classList.add(`sheet-tc--${format.color}`);
+}
+
 function formatData(cell: CellComponent, column: TableColumn, latest: RefObject<Props>) {
   const { papers, query, statusFilter } = latest.current;
   const paper = findPaper(String(cell.getRow().getIndex()), papers);
@@ -505,6 +554,19 @@ function formatData(cell: CellComponent, column: TableColumn, latest: RefObject<
   };
 
   if (!paper) return unfilled();
+
+  if (column.kind === "note") {
+    return paper.note?.trim() ? markdownToDom(paper.note) : span("sheet-text");
+  }
+
+  if (column.kind === "tags") {
+    const list = span("sheet-text sheet-tags");
+    (paper.tags ?? []).forEach((id) => {
+      const tag = latest.current.tags.find((item) => item.id === id);
+      if (tag) list.append(span(`sheet-tag sheet-tag--${tag.color}`, tag.name));
+    });
+    return list;
+  }
 
   if (column.kind === "info") {
     const value = cellText(paper, column);
@@ -535,8 +597,20 @@ function formatData(cell: CellComponent, column: TableColumn, latest: RefObject<
   return wrapper as unknown as HTMLElement;
 }
 
+type EditorArgs = [CellComponent, (fn: () => void) => void, (value: string) => void, () => void];
+
+function overlayEditor(...args: EditorArgs) {
+  return floatingEditor(false, ...args);
+}
+
+// Ghi chú: giữ xuống dòng để viết gạch đầu dòng, được để trống. Shift + Enter xuống dòng.
+function noteEditor(...args: EditorArgs) {
+  return floatingEditor(true, ...args);
+}
+
 // Ô sửa nổi phía trên bảng, để sửa được cả câu dài khi đang thu gọn một dòng.
-function overlayEditor(
+function floatingEditor(
+  multiline: boolean,
   cell: CellComponent,
   onRendered: (fn: () => void) => void,
   success: (value: string) => void,
@@ -548,7 +622,8 @@ function overlayEditor(
   area.name = "sua-o";
   area.autocomplete = "off";
   area.value = String(cell.getValue() ?? "");
-  area.setAttribute("aria-label", "Sửa nội dung ô");
+  area.setAttribute("aria-label", multiline ? "Sửa ghi chú, viết bằng Markdown" : "Sửa nội dung ô");
+  if (multiline) area.placeholder = "**đậm**, *nghiêng*, - gạch đầu dòng, [chữ](https://…). Shift + Enter để xuống dòng.";
   let finished = false;
 
   const close = () => {
@@ -569,9 +644,9 @@ function overlayEditor(
 
   function commit() {
     if (finished) return;
-    const value = area.value.replace(/\s*\n\s*/g, " ").replace(/\t/g, " ").trim();
-    // Không cho để trống: bỏ thay đổi thay vì xóa mất nội dung.
-    if (!value || value === cell.getValue()) {
+    const value = multiline ? area.value.replace(/\s+$/, "") : area.value.replace(/\s*\n\s*/g, " ").replace(/\t/g, " ").trim();
+    // Ô nội dung không được để trống: bỏ thay đổi thay vì xóa mất nội dung. Ghi chú thì được xoá trống.
+    if ((!value && !multiline) || value === String(cell.getValue() ?? "")) {
       close();
       cancel();
       return;
@@ -583,7 +658,7 @@ function overlayEditor(
   area.addEventListener("keydown", (event) => {
     event.stopPropagation();
     if (event.isComposing) return;
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !(multiline && event.shiftKey)) {
       event.preventDefault();
       commit();
       (cell.getElement().closest(".tabulator-tableholder") as HTMLElement | null)?.focus({ preventScroll: true });

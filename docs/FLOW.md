@@ -187,6 +187,8 @@ Chi tiết kỹ thuật của bước kiểm tra nằm trong skill `citation-che
 | Ô bị sửa | Lúc lưu bài, với ô có nội dung khác đề xuất của AI. Và ngay khi sinh viên sửa hoặc tự gõ một ô trong bảng tổng hợp. Có ghi rõ nơi sửa để đo riêng. |
 | Bấm "Lưu vào bảng" | Khi bấm nút |
 
+Định dạng, tô màu, tô sáng, ghi chú và nhãn của sinh viên không phải thao tác sửa ô, nên không ghi lại.
+
 ## Giao diện hiện tại chưa khớp ở đâu
 
 Đối chiếu ngày 2026-11-06, với bản xem thử chạy bằng dữ liệu mẫu.
@@ -202,9 +204,9 @@ Chi tiết kỹ thuật của bước kiểm tra nằm trong skill `citation-che
 | Báo lỗi file scan, quá lớn, có mật khẩu | Chưa kiểm tra được. Chỉ có màn hình lỗi mẫu, và câu chữ chưa nhắc đến file quá lớn hay có mật khẩu. |
 | AI điền từng cột | Chưa có. Trang duyệt hiện đúng các cột đã thiết lập, nhưng nội dung lấy từ bài mẫu: cột không trùng bài mẫu sẽ ghi "chưa điền". Mô tả cột chưa được gửi đi đâu. |
 | Nút điền ô chưa điền bằng AI | Đã có nút nhưng bị khóa, ghi rõ sẽ dùng được khi nối AI. |
-| Lưu bảng và cột | Bảng mới và thay đổi cột nằm ở bộ nhớ tạm, tải lại trang là mất và về lại bảng mẫu. |
+| Lưu bảng và cột | Bảng, cột, định dạng, ghi chú, nhãn giữ trong trình duyệt, tải lại trang vẫn còn. Chưa có cơ sở dữ liệu nên đổi máy là mất. |
 | Code kiểm tra câu trích | Chưa có. Nhãn được gán tay. |
-| Xuất Excel | Nút chỉ báo là chưa xuất được. |
+| Xuất Excel | Đã xuất được: mọi bài, các cột đang hiện, giữ định dạng và màu. |
 
 **Lệch thật, cần sửa hoặc quyết định:**
 

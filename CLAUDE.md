@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tình trạng dự án
 
-Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Chưa có AI, cơ sở dữ liệu, code kiểm tra câu trích, xuất Excel thật, và chưa có test tự động.
+Đang ở bản xem thử giao diện: 4 màn hình chạy bằng dữ liệu mẫu. Chưa có AI, cơ sở dữ liệu, code kiểm tra câu trích và test tự động. Đã xuất được Excel.
 
 Lệnh (lệnh test sẽ bổ sung khi có test):
 
@@ -27,7 +27,12 @@ Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 - `src/components/EvidencePanel.tsx`: khung bằng chứng, chỉ hiện khi chọn ô. Máy tính mở bên phải, điện thoại trượt lên từ dưới và không che ô đang chọn.
 - Trang bảng chiếm trọn màn hình, chỉ bảng tự cuộn bên trong: thanh tiêu đề, hàng ô số liệu bấm để lọc, thanh công cụ một dòng, rồi đến bảng.
 - Sinh viên bấm đúp để sửa ô nội dung ngay trong bảng: ô có chữ "đã sửa", giữ đề xuất ban đầu của AI, ghi thao tác `o_bi_sua` kèm `noi: "bang"`. Ô "chưa điền" tự gõ thì ghi "do bạn điền", không có câu trích. Câu trích gốc không sửa được; Tên bài chỉ sửa được ở trang duyệt.
-- `src/lib/store.tsx`: bộ nhớ tạm dùng chung giữa các trang, tải lại trang là mất. `saveReview` từ chối lưu khi còn ô chưa duyệt hoặc chưa xác nhận thông tin bài.
+- `src/lib/store.tsx`: dữ liệu dùng chung giữa các trang. Bản xem thử giữ bảng, định dạng, ghi chú và nhãn trong `localStorage` (khoá `tcb-bang-v1`) để tải lại trang không mất; bài đang duyệt dở thì không giữ. Khi có cơ sở dữ liệu chỉ cần thay phần đọc, ghi này. Nút "Đặt lại dữ liệu mẫu" ở dòng bản xem thử xoá dữ liệu đã lưu. `saveReview` từ chối lưu khi còn ô chưa duyệt hoặc chưa xác nhận thông tin bài.
+- Tuỳ biến của sinh viên (`src/lib/cell-format.ts`, `src/components/FormatBar.tsx`): in đậm, in nghiêng, gạch chân, màu chữ, tô nền ô hoặc cả hàng, phím tắt Cmd/Ctrl + B, I, U, định dạng nhiều ô cùng lúc. Thanh định dạng nằm ở đầu khung bằng chứng. Ô đã tô màu thì bỏ nền trạng thái, trạng thái chỉ còn biểu tượng ở góc; ô cần kiểm tra thêm viền cam. Màu chữ tự chọn (kể cả đỏ) là lựa chọn của sinh viên, không phạm quy ước "đỏ chỉ cho chữ báo lỗi" của giao diện.
+- Tô sáng (`src/components/HighlightText.tsx`): bôi đen đoạn chữ trong nội dung hoặc câu trích ở khung bằng chứng. Chỉ lưu vị trí ký tự, câu trích gốc không đổi. Sửa nội dung ô thì bỏ các đoạn tô sáng của nội dung đó.
+- Cột Ghi chú (`kind: "note"`, Markdown, `src/lib/markdown.ts`) và cột Nhãn (`kind: "tags"`, nhãn nằm ở `SheetTable.tags`): sinh viên tự viết, AI không bao giờ điền. Bộ đọc Markdown tự viết, không dựng HTML từ chữ người dùng, chỉ nhận link `http`, `https`, `mailto`.
+- Định dạng, tô màu, tô sáng, ghi chú, nhãn không ghi thao tác `o_bi_sua`. Chỉ đổi nội dung một ô do AI đề xuất mới tính là sửa.
+- Xuất Excel (`src/lib/export-xlsx.ts`, thư viện exceljs, chỉ tải khi bấm nút): xuất mọi bài, các cột đang hiện, theo thứ tự trên bảng; giữ in đậm, in nghiêng, gạch chân, màu chữ, màu nền ô và nền trạng thái; ghi chú thành chữ thường; ô cần kiểm tra có lời nhắc kèm theo trong ô. Ô có chữ bắt đầu bằng dấu "=" vẫn được ghi là chữ, không thành công thức.
 - `src/lib/types.ts`: kiểu dữ liệu theo skill `citation-check`.
 - `src/lib/events.ts`: ghi thao tác, hiện chỉ in ra console.
 - `PreviewBar` và `?trang-thai=dang-tai|loi|trong`: chỉ để xem thử trạng thái, bỏ khi nối dữ liệu thật.
@@ -123,7 +128,8 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 - Đầu trang và chân trang xen giữa câu vắt qua hai trang: thử trên bài thật rồi quyết định có xử lý thêm không. Hiện những câu này sẽ thành "cần kiểm tra".
 - Khi làm code kiểm tra thật, hai điều đã thấy trên bài thật có thể làm câu đúng thành "cần kiểm tra": PDF tiếng Trung chèn khoảng trắng vào giữa câu và tách chữ Latin (ví dụ "Ｓｔｉ ｇ ｌｅｒ"); từ ghép có gạch nối thật bị ngắt cuối dòng ("high-" rồi "poverty") bị nối thành "highpoverty" nên không khớp câu trích "high-poverty". Cần thử rồi quyết định cách xử lý.
 - Số trang trong file PDF có thể lệch với số in trên trang: giao diện đang ghi "trang X của file PDF". Thử trên bài thật rồi quyết định có hiện thêm số in không.
-- Xuất Excel có kèm cột đang ẩn không: quyết định khi làm xuất Excel thật.
+- Xuất Excel đang bỏ cột ẩn và giữ mọi bài dù đang lọc: hỏi lại người dùng sau buổi thử thật.
+- exceljs kéo theo hai thư viện có cảnh báo mức trung bình (`uuid`, `minimatch`): chỉ chạy trên trình duyệt khi xuất file, không nhận dữ liệu từ bên ngoài. Xem lại khi exceljs có bản mới.
 
 ## Ghi chú để đưa vào README sau này
 
@@ -134,6 +140,7 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 Bản này chưa làm, nếu thấy cần phải hỏi người dùng trước:
 
 - Công thức tính toán trong bảng
+- Chèn ảnh vào ô
 - Biểu đồ
 - Nhiều người sửa cùng lúc
 
@@ -143,7 +150,7 @@ Bản này chưa làm, nếu thấy cần phải hỏi người dùng trước:
 - Tabulator cho bảng tổng hợp (đã dùng). AG Grid Community không có chọn vùng và copy; Handsontable chỉ miễn phí khi dùng phi thương mại.
 - Gemini bản miễn phí, tên model đặt trong biến môi trường để dễ đổi, không ghi cứng trong code
 - Supabase để lưu dữ liệu
-- Xuất file Excel
+- Xuất file Excel bằng exceljs (MIT)
 
 ## Cách làm việc với người dùng
 

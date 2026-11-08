@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { exportTableToExcel } from "@/lib/export-xlsx";
 import { checkColumnName, countUnfilled, isInfoEdited, newContentColumn, removedInfoColumns, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
 import { countLabels, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
@@ -10,6 +11,7 @@ import { useStore } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
 import { EvidencePanel } from "./EvidencePanel";
+import { FormatBar, useCellFormatting } from "./FormatBar";
 import { StatusIcon } from "./StatusBadge";
 import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
 import { SkeletonLines, StateMessage } from "./StateMessage";
@@ -18,8 +20,18 @@ const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", 
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { activeTable } = useStore();
+  const { activeTable, hydrated } = useStore();
   const table = state === "trong" ? null : activeTable;
+
+  if (!hydrated && state === "binh-thuong") {
+    return (
+      <main id="noi-dung" className="page page--wide">
+        <StateMessage tone="loading" title="Đang mở bảng của bạn…">
+          <SkeletonLines count={7} />
+        </StateMessage>
+      </main>
+    );
+  }
 
   // Có bảng thì chiếm trọn màn hình; các trạng thái khác dùng khung trang thường.
   if (state === "binh-thuong" && table) {
@@ -80,7 +92,7 @@ const STAT_TILES: { key: LabelKey; label: string }[] = [
 
 function Sheet({ table }: { table: SheetTable }) {
   const router = useRouter();
-  const { tables, setActiveTable, savedTitle, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
+  const { tables, setActiveTable, savedTitle, saveFailed, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
   const { papers, columns } = table;
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -94,6 +106,11 @@ function Sheet({ table }: { table: SheetTable }) {
   const [menu, setMenu] = useState<{ columnId: string; anchor: DOMRect } | null>(null);
   const [columnNotice, setColumnNotice] = useState<string | null>(null);
   const [savedNoticeClosed, setSavedNoticeClosed] = useState(false);
+  const [tagFilter, setTagFilter] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const tags = table.tags ?? [];
+  const targets = selected?.cells ?? [];
+  const formatting = useCellFormatting(targets, papers);
 
   const counts = useMemo(() => countLabels(papers), [papers]);
   const languages = useMemo(
@@ -149,16 +166,17 @@ function Sheet({ table }: { table: SheetTable }) {
   }
 
   const notice =
-    (exportNote ? "Bản xem thử chưa tạo được file Excel. Nút này sẽ hoạt động ở bước sau." : null) ??
+    (exportNote ? "Chưa tạo được file Excel. Hãy thử lại; nếu vẫn lỗi, tải lại trang rồi xuất lần nữa." : null) ??
     columnNotice ??
     (savedTitle && !savedNoticeClosed ? `Đã lưu vào bảng: ${savedTitle}` : null);
 
   const zoomIndex = ZOOM_STEPS.indexOf(zoom);
-  const hasFilters = Boolean(query) || statusFilter !== "all" || Object.values(columnFilters).some(Boolean);
+  const hasFilters = Boolean(query) || Boolean(tagFilter) || statusFilter !== "all" || Object.values(columnFilters).some(Boolean);
 
   function clearFilters() {
     setQuery("");
     setStatusFilter("all");
+    setTagFilter("");
     setColumnFilters({});
   }
 
@@ -263,6 +281,20 @@ function Sheet({ table }: { table: SheetTable }) {
           </select>
         </label>
 
+        {tags.length > 0 ? (
+          <label className="sheet-toolbar__field">
+            <span>Nhãn</span>
+            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <option value="">Tất cả</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <details className="columns-menu">
           <summary className="button button--quiet sheet-toolbar__button">Ẩn, hiện cột</summary>
           <div className="columns-menu__panel">
@@ -328,9 +360,20 @@ function Sheet({ table }: { table: SheetTable }) {
         <button
           type="button"
           className="button button--quiet sheet-toolbar__button sheet-toolbar__export"
-          onClick={() => setExportNote(true)}
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            setExportNote(false);
+            try {
+              await exportTableToExcel(table);
+            } catch {
+              setExportNote(true);
+            } finally {
+              setExporting(false);
+            }
+          }}
         >
-          Xuất Excel
+          {exporting ? "Đang tạo file…" : "Xuất Excel"}
         </button>
       </div>
 
@@ -343,11 +386,25 @@ function Sheet({ table }: { table: SheetTable }) {
         </div>
       ) : null}
 
-      <div className="sheet-workspace">
+      <div
+        className="sheet-workspace"
+        onKeyDownCapture={(event: KeyboardEvent<HTMLDivElement>) => {
+          // Cmd/Ctrl + B, I, U định dạng các ô đang chọn, trừ khi đang gõ chữ.
+          if (!(event.metaKey || event.ctrlKey) || event.altKey || targets.length === 0) return;
+          if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
+          const key = { b: "bold", i: "italic", u: "underline" }[event.key.toLowerCase()] as "bold" | "italic" | "underline" | undefined;
+          if (!key) return;
+          event.preventDefault();
+          event.stopPropagation();
+          formatting.toggle(key);
+        }}
+      >
         <div className="sheet-workspace__grid">
       <SheetGrid
         papers={papers}
         columns={columns}
+        tags={tags}
+        tagFilter={tagFilter}
         query={query}
         statusFilter={statusFilter}
         columnFilters={columnFilters}
@@ -364,14 +421,25 @@ function Sheet({ table }: { table: SheetTable }) {
         onAddPaper={() => router.push("/them-bai")}
       />
         </div>
-        {selection ? <EvidencePanel selection={selection} onClose={() => setSelected(null)} /> : null}
+        {selection ? (
+          <EvidencePanel
+            selection={selection}
+            tags={tags}
+            formatBar={<FormatBar key={targets.map((target) => `${target.paperId}:${target.columnId}`).join(",")} targets={targets} papers={papers} />}
+            onClose={() => setSelected(null)}
+          />
+        ) : null}
       </div>
 
       <footer className="sheet-footer">
         <span>
           Đang hiện {visibleCount}/{papers.length} bài
         </span>
-        <span>Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao.</span>
+        <span className={saveFailed ? "sheet-footer__error" : undefined}>
+          {saveFailed
+            ? "Trình duyệt đang không cho lưu, tải lại trang sẽ mất thay đổi. Hãy xuất Excel để giữ bản sao."
+            : "Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao."}
+        </span>
       </footer>
 
       {menu && menuColumn ? (

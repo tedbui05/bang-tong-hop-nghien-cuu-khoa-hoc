@@ -1,12 +1,33 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { addHighlightRange, withFormat, withRowFill } from "./cell-format";
 import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_ID } from "./columns";
 import { logEvent } from "./events";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
-import { getLabelKey, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
+import type { FillKey, TagColorKey } from "./palette";
+import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
-// Bộ nhớ tạm cho bản xem thử: tải lại trang là về dữ liệu mẫu ban đầu.
+// Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
+// Khi có cơ sở dữ liệu thì thay phần đọc và ghi này. Bài đang duyệt dở không được giữ.
+const STORAGE_KEY = "tcb-bang-v1";
+
+function readSaved(): { tables: SheetTable[]; activeId: string | null } | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const valid =
+      Array.isArray(data?.tables) &&
+      data.tables.every((table: SheetTable) => table?.id && table?.name && Array.isArray(table?.columns) && Array.isArray(table?.papers));
+    return valid ? { tables: data.tables, activeId: data.activeId ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+export type CellTarget = { paperId: string; columnId: string };
+
 export type ReviewSession = {
   tableId: string;
   paper: Paper;
@@ -37,6 +58,19 @@ type Store = {
   saveReview: () => boolean;
   // Sửa một ô đã lưu ngay trong bảng tổng hợp.
   editSavedCell: (paperId: string, column: TableColumn, value: string) => void;
+  // Các thao tác dưới đây không đổi nội dung ô nên không ghi là "ô bị sửa".
+  formatCells: (targets: CellTarget[], change: (current: CellFormat) => Partial<CellFormat>) => void;
+  fillRows: (paperIds: string[], fill: FillKey | null) => void;
+  addHighlight: (target: CellTarget, highlight: Highlight) => void;
+  removeHighlight: (target: CellTarget, highlight: Highlight) => void;
+  clearHighlights: (target: CellTarget) => void;
+  createTag: (name: string, color: TagColorKey) => string;
+  toggleTag: (paperId: string, tagId: string) => void;
+  deleteTag: (tagId: string) => void;
+  // Đã đọc xong dữ liệu trong trình duyệt chưa.
+  hydrated: boolean;
+  saveFailed: boolean;
+  resetData: () => void;
 };
 
 const StoreContext = createContext<Store | null>(null);
@@ -57,6 +91,7 @@ function manualCell(column: string, value: string): ReviewCell {
 }
 
 function editCell(paper: SavedPaper, column: TableColumn, value: string): SavedPaper {
+  if (column.kind === "note") return { ...paper, note: value };
   if (column.infoKey) {
     // Tên bài chỉ sửa được ở bước duyệt.
     if (column.id === TITLE_COLUMN_ID) return paper;
@@ -64,8 +99,12 @@ function editCell(paper: SavedPaper, column: TableColumn, value: string): SavedP
   }
   const existing = paper.cells.find((cell) => cell.column === column.id);
   if (!existing) return { ...paper, cells: [...paper.cells, manualCell(column.id, value)] };
+  // Nội dung đổi thì vị trí đoạn tô sáng cũ không còn đúng; câu trích gốc không đổi nên giữ nguyên.
+  const highlights = { ...paper.highlights };
+  if (highlights[column.id]) highlights[column.id] = highlights[column.id].filter((item) => item.field === "quote");
   return {
     ...paper,
+    highlights,
     cells: paper.cells.map((cell) => {
       if (cell !== existing) return cell;
       if (cell.status === "manual") return manualCell(column.id, value);
@@ -75,8 +114,15 @@ function editCell(paper: SavedPaper, column: TableColumn, value: string): SavedP
 }
 
 function withoutColumn(paper: SavedPaper, column: TableColumn): SavedPaper {
-  if (column.infoKey) return { ...paper, ...infoWithout(paper, column), cells: paper.cells };
-  return { ...paper, cells: paper.cells.filter((cell) => cell.column !== column.id) };
+  const formats = { ...paper.formats };
+  const highlights = { ...paper.highlights };
+  delete formats[column.id];
+  delete highlights[column.id];
+  const base = { ...paper, formats, highlights };
+  if (column.kind === "note") return { ...base, note: undefined };
+  if (column.kind === "tags") return { ...base, tags: [] };
+  if (column.infoKey) return { ...base, ...infoWithout(paper, column) };
+  return { ...base, cells: paper.cells.filter((cell) => cell.column !== column.id) };
 }
 
 function infoWithout(paper: Paper, column: TableColumn): Pick<Paper, "info" | "suggested_info"> {
@@ -98,6 +144,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(sampleTable.id);
   const [review, setReview] = useState<ReviewSession | null>(null);
   const [savedTitle, setSavedTitle] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const skipReset = useRef(false);
+
+  // Máy chủ không có dữ liệu trình duyệt nên chỉ đọc được sau khi trang đã hiện.
+  useEffect(() => {
+    const saved = readSaved();
+    /* eslint-disable react-hooks/set-state-in-effect -- phải đọc sau khi hiện trang để khớp với máy chủ */
+    if (saved) {
+      setTables(saved.tables);
+      setActiveId(saved.activeId);
+    }
+    setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || skipReset.current) return;
+    const timer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, activeId }));
+        setSaveFailed(false);
+      } catch {
+        setSaveFailed(true);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [hydrated, tables, activeId]);
+
+  const resetData = useCallback(() => {
+    skipReset.current = true;
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Trình duyệt chặn bộ nhớ thì tải lại cũng về dữ liệu mẫu.
+    }
+    window.location.reload();
+  }, []);
 
   const activeTable = useMemo(() => tables.find((table) => table.id === activeId) ?? null, [tables, activeId]);
 
@@ -186,12 +270,100 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const editSavedCell = useCallback<Store["editSavedCell"]>(
     (paperId, column, value) => {
-      logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
+      // Ghi chú là chữ riêng của sinh viên, không phải đề xuất của AI nên không tính vào chỉ số.
+      if (column.kind !== "note") logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
       updateActive((table) => ({
         ...table,
         papers: table.papers.map((paper) => (paper.id === paperId ? editCell(paper, column, value) : paper)),
       }));
     },
+    [updateActive],
+  );
+
+  const updatePapers = useCallback(
+    (paperIds: string[], change: (paper: SavedPaper) => SavedPaper) => {
+      updateActive((table) => ({
+        ...table,
+        papers: table.papers.map((paper) => (paperIds.includes(paper.id) ? change(paper) : paper)),
+      }));
+    },
+    [updateActive],
+  );
+
+  const formatCells = useCallback<Store["formatCells"]>(
+    (targets, change) => {
+      updateActive((table) => ({
+        ...table,
+        papers: table.papers.map((paper) =>
+          targets
+            .filter((target) => target.paperId === paper.id)
+            .reduce((current, target) => withFormat(current, target.columnId, change(current.formats?.[target.columnId] ?? {})), paper),
+        ),
+      }));
+    },
+    [updateActive],
+  );
+
+  const fillRows = useCallback<Store["fillRows"]>((paperIds, fill) => updatePapers(paperIds, (paper) => withRowFill(paper, fill)), [updatePapers]);
+
+  const addHighlight = useCallback<Store["addHighlight"]>(
+    ({ paperId, columnId }, highlight) =>
+      updatePapers([paperId], (paper) => ({
+        ...paper,
+        highlights: { ...paper.highlights, [columnId]: addHighlightRange(paper.highlights?.[columnId] ?? [], highlight) },
+      })),
+    [updatePapers],
+  );
+
+  const removeHighlight = useCallback<Store["removeHighlight"]>(
+    ({ paperId, columnId }, highlight) =>
+      updatePapers([paperId], (paper) => ({
+        ...paper,
+        highlights: {
+          ...paper.highlights,
+          [columnId]: (paper.highlights?.[columnId] ?? []).filter(
+            (item) => !(item.field === highlight.field && item.start === highlight.start),
+          ),
+        },
+      })),
+    [updatePapers],
+  );
+
+  const clearHighlights = useCallback<Store["clearHighlights"]>(
+    ({ paperId, columnId }) =>
+      updatePapers([paperId], (paper) => {
+        const highlights = { ...paper.highlights };
+        delete highlights[columnId];
+        return { ...paper, highlights };
+      }),
+    [updatePapers],
+  );
+
+  const createTag = useCallback<Store["createTag"]>(
+    (name, color) => {
+      const id = `nhan-${crypto.randomUUID()}`;
+      updateActive((table) => ({ ...table, tags: [...(table.tags ?? []), { id, name, color }] }));
+      return id;
+    },
+    [updateActive],
+  );
+
+  const toggleTag = useCallback<Store["toggleTag"]>(
+    (paperId, tagId) =>
+      updatePapers([paperId], (paper) => ({
+        ...paper,
+        tags: paper.tags?.includes(tagId) ? paper.tags.filter((id) => id !== tagId) : [...(paper.tags ?? []), tagId],
+      })),
+    [updatePapers],
+  );
+
+  const deleteTag = useCallback<Store["deleteTag"]>(
+    (tagId) =>
+      updateActive((table) => ({
+        ...table,
+        tags: (table.tags ?? []).filter((tag) => tag.id !== tagId),
+        papers: table.papers.map((paper) => ({ ...paper, tags: (paper.tags ?? []).filter((id) => id !== tagId) })),
+      })),
     [updateActive],
   );
 
@@ -295,6 +467,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateInfo,
       setInfoConfirmed,
       saveReview,
+formatCells,
+      fillRows,
+      addHighlight,
+      removeHighlight,
+      clearHighlights,
+      createTag,
+      toggleTag,
+      deleteTag,
+      hydrated,
+      saveFailed,
+      resetData,
       editSavedCell,
     }),
     [
@@ -314,6 +497,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateInfo,
       setInfoConfirmed,
       saveReview,
+formatCells,
+      fillRows,
+      addHighlight,
+      removeHighlight,
+      clearHighlights,
+      createTag,
+      toggleTag,
+      deleteTag,
+      hydrated,
+      saveFailed,
+      resetData,
       editSavedCell,
     ],
   );

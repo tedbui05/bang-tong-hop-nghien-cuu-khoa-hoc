@@ -1,6 +1,8 @@
 // Kết quả kiểm tra câu trích. Ở bản xem thử, giá trị này được gán tay trong dữ liệu mẫu.
 export type CheckResult = "verified" | "page_corrected" | "needs_review";
 
+import type { FillKey, TagColorKey, TextColorKey } from "./palette";
+
 // Một ô AI đề xuất. Tên trường theo skill citation-check; column là mã cột, không phải tên cột,
 // để đổi tên cột không làm mất dữ liệu.
 export type AiCell = {
@@ -38,15 +40,40 @@ export type Paper = {
   suggested_info: PaperInfo;
 };
 
+// Định dạng do sinh viên tự làm. Không đổi nội dung nên không tính là "sửa ô" khi đo chỉ số.
+export type CellFormat = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: TextColorKey;
+  // null: ô này đã bỏ màu dù cả hàng có tô.
+  fill?: FillKey | null;
+};
+
+// Đoạn được tô sáng, tính theo vị trí ký tự. Không đụng vào câu trích gốc.
+export type Highlight = { field: "value" | "quote"; start: number; end: number };
+
 // Ô không có bản ghi trong cells (hoặc thiếu trong info) nghĩa là "chưa điền".
-export type SavedPaper = Paper & { cells: ReviewCell[] };
+export type SavedPaper = Paper & {
+  cells: ReviewCell[];
+  formats?: Record<string, CellFormat>;
+  rowFill?: FillKey;
+  highlights?: Record<string, Highlight[]>;
+  // Ghi chú riêng của sinh viên, viết bằng Markdown. AI không bao giờ điền vào đây.
+  note?: string;
+  // Mã của các nhãn trong SheetTable.tags.
+  tags?: string[];
+};
+
+export type TableTag = { id: string; name: string; color: TagColorKey };
 
 export type TableColumn = {
   id: string;
   name: string;
   // "AI cần tìm gì cho cột này". Dòng này sẽ được gửi cho AI.
   description: string;
-  kind: "info" | "content";
+  // "note" và "tags" do sinh viên tự viết, AI không bao giờ điền.
+  kind: "info" | "content" | "note" | "tags";
   infoKey?: InfoKey;
   visible: boolean;
   width?: number;
@@ -59,6 +86,7 @@ export type SheetTable = {
   description?: string;
   columns: TableColumn[];
   papers: SavedPaper[];
+  tags?: TableTag[];
 };
 
 export type LabelKey = CheckResult | "not_found" | "manual";

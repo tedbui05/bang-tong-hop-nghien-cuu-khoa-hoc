@@ -1,4 +1,4 @@
-import type { InfoKey, Paper, SavedPaper, TableColumn } from "./types";
+import type { InfoKey, Paper, SavedPaper, TableColumn, TableTag } from "./types";
 
 export const TITLE_COLUMN_ID = "info-title";
 
@@ -22,20 +22,36 @@ function infoColumn({ key, name, description }: (typeof INFO_COLUMNS)[number]): 
   return { id: `info-${key}`, name, description, kind: "info", infoKey: key, visible: true };
 }
 
+export const NOTE_COLUMN_ID = "ghi-chu";
+export const TAGS_COLUMN_ID = "nhan";
+
+function ownColumns(): TableColumn[] {
+  return [
+    { id: TAGS_COLUMN_ID, name: "Nhãn", description: "Nhãn bạn tự đặt cho bài. AI không điền vào cột này.", kind: "tags", visible: true },
+    { id: NOTE_COLUMN_ID, name: "Ghi chú", description: "Ghi chú riêng của bạn, viết bằng Markdown. AI không điền vào cột này.", kind: "note", visible: true },
+  ];
+}
+
 export function suggestedColumns(): TableColumn[] {
   return [
     ...INFO_COLUMNS.map(infoColumn),
     ...SUGGESTED_CONTENT.map((column): TableColumn => ({ ...column, kind: "content", visible: true })),
+    ...ownColumns(),
   ];
+}
+
+// Cột do sinh viên tự viết: không có mô tả cho AI, không bao giờ "chưa điền".
+export function isOwnColumn(column: TableColumn): boolean {
+  return column.kind === "note" || column.kind === "tags";
 }
 
 export function titleColumn(): TableColumn {
   return infoColumn(INFO_COLUMNS[0]);
 }
 
-// Cột thông tin bài đã bị xoá thì có thể thêm lại. Cột mới luôn để trống, dữ liệu cũ đã mất.
+// Cột thông tin bài, Ghi chú và Nhãn đã bị xoá thì có thể thêm lại. Cột mới luôn để trống, dữ liệu cũ đã mất.
 export function removedInfoColumns(columns: TableColumn[]): TableColumn[] {
-  return INFO_COLUMNS.map(infoColumn).filter((info) => !columns.some((column) => column.id === info.id));
+  return [...INFO_COLUMNS.map(infoColumn), ...ownColumns()].filter((item) => !columns.some((column) => column.id === item.id));
 }
 
 export function newContentColumn(name: string, description: string): TableColumn {
@@ -97,7 +113,11 @@ export function isInfoEdited(paper: Paper, column: TableColumn): boolean {
 }
 
 // Chữ của một ô theo cột. Chuỗi rỗng nghĩa là "chưa điền".
-export function cellText(paper: SavedPaper, column: TableColumn): string {
+export function cellText(paper: SavedPaper, column: TableColumn, tags: TableTag[] = []): string {
+  if (column.kind === "note") return paper.note ?? "";
+  if (column.kind === "tags") {
+    return (paper.tags ?? []).map((id) => tags.find((tag) => tag.id === id)?.name).filter(Boolean).join(", ");
+  }
   if (column.kind === "info") return infoValue(paper, column) ?? "";
   return paper.cells.find((cell) => cell.column === column.id)?.value_vi ?? "";
 }
@@ -107,8 +127,13 @@ export function countColumnData(papers: SavedPaper[], column: TableColumn): { fi
   let filled = 0;
   let edited = 0;
   papers.forEach((paper) => {
-    if (!cellText(paper, column)) return;
+    const hasData = column.kind === "tags" ? (paper.tags?.length ?? 0) > 0 : Boolean(cellText(paper, column));
+    if (!hasData) return;
     filled += 1;
+    if (isOwnColumn(column)) {
+      edited += 1;
+      return;
+    }
     const cell = paper.cells.find((item) => item.column === column.id);
     if (column.kind === "info" ? isInfoEdited(paper, column) : cell && (cell.status === "manual" || cell.value_vi !== cell.suggested_value)) {
       edited += 1;
@@ -118,5 +143,6 @@ export function countColumnData(papers: SavedPaper[], column: TableColumn): { fi
 }
 
 export function countUnfilled(papers: SavedPaper[], column: TableColumn): number {
+  if (isOwnColumn(column)) return 0;
   return papers.length - countColumnData(papers, column).filled;
 }

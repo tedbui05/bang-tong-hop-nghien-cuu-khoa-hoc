@@ -415,3 +415,101 @@
     padding-left: 8px;
   }
 }
+
+/* Định dạng sinh viên tự làm */
+.sheet-cell--bold .sheet-text,
+.sheet-cell--bold .sheet-title {
+  font-weight: 700;
+}
+
+.sheet-cell--italic .sheet-text,
+.sheet-cell--italic .sheet-title {
+  font-style: italic;
+}
+
+.sheet-cell--underline .sheet-text,
+.sheet-cell--underline .sheet-title {
+  text-decoration: underline;
+}
+
+.sheet-tc--do { --cell-ink: var(--text-do); }
+.sheet-tc--cam { --cell-ink: var(--text-cam); }
+.sheet-tc--luc { --cell-ink: var(--text-luc); }
+.sheet-tc--duong { --cell-ink: var(--text-duong); }
+.sheet-tc--tia { --cell-ink: var(--text-tia); }
+.sheet-tc--xam { --cell-ink: var(--text-xam); }
+
+[class*="sheet-tc--"] .sheet-text,
+[class*="sheet-tc--"] .sheet-title {
+  color: var(--cell-ink);
+}
+
+.sheet-fill--hong { --cell-fill: var(--fill-hong); }
+.sheet-fill--dao { --cell-fill: var(--fill-dao); }
+.sheet-fill--chanh { --cell-fill: var(--fill-chanh); }
+.sheet-fill--la { --cell-fill: var(--fill-la); }
+.sheet-fill--ngoc { --cell-fill: var(--fill-ngoc); }
+.sheet-fill--tim { --cell-fill: var(--fill-tim); }
+.sheet-fill--xam { --cell-fill: var(--fill-xam); }
+
+/* Màu tự tô phải thắng nền trạng thái, hàng xen kẽ, rê chuột và vùng chọn của thư viện:
+   các quy tắc đó của thư viện rất cụ thể nên ở đây phải dùng !important. */
+.sheet-host .tabulator-row .tabulator-cell.sheet-cell--filled {
+  background: var(--cell-fill) !important;
+}
+
+/* Ô đã tô: trạng thái chỉ còn biểu tượng nhỏ ở góc */
+.sheet-cell--filled .sheet-icon {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 2px;
+  background: var(--surface);
+  border-radius: 50%;
+}
+
+.sheet-cell--filled .sheet-flag {
+  display: none;
+}
+
+.sheet-host .tabulator-row .tabulator-cell.sheet-cell--filled:has(.sheet-icon) {
+  padding-right: calc(var(--sheet-pad-x) + 14px);
+}
+
+/* Ô cần kiểm tra vẫn phải nổi bật dù đã tô màu: viền cam và biểu tượng trên nền vàng */
+.sheet-host .tabulator-row .tabulator-cell.sheet-cell--filled.sheet-st--warn {
+  box-shadow: inset 0 0 0 2px var(--flag);
+}
+
+.sheet-cell--filled .sheet-icon--needs_review {
+  background: var(--warn-bg);
+  box-shadow: 0 0 0 1px var(--flag);
+}
+
+/* Ghi chú Markdown trong ô: thu gọn thành một dòng, gạch đầu dòng nối bằng dấu chấm tròn */
+.sheet-md__p,
+.sheet-md__li {
+  display: inline;
+}
+
+.sheet-md__p + .sheet-md__p::before,
+.sheet-md__p + .sheet-md__li::before,
+.sheet-md__li::before {
+  content: " • ";
+  color: var(--ink-soft);
+}
+
+.sheet-md__li:first-child::before {
+  content: "• ";
+}
+
+.sheet-md a {
+  color: var(--accent);
+}
+
+.sheet-tags .sheet-tag {
+  font-size: calc(12px * var(--sheet-zoom));
+}

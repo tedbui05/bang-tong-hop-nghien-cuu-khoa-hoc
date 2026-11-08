@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { hasContentColumn } from "@/lib/columns";
+import { hasContentColumn, isOwnColumn } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
 import { useStore } from "@/lib/store";
 import { SkeletonLines, StateMessage } from "./StateMessage";
@@ -163,7 +163,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
           <section className="columns-section" aria-labelledby="cac-cot">
             <h2 id="cac-cot">Sẽ điền vào bảng “{table.name}” theo các cột:</h2>
             <ul className="column-chips">
-              {table.columns.map((column) => (
+              {table.columns.filter((column) => !isOwnColumn(column)).map((column) => (
                 <li key={column.id} title={column.description || undefined}>
                   {column.name}
                 </li>
