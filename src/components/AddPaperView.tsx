@@ -22,7 +22,7 @@ export function AddPaperView({ state }: { state: PreviewState }) {
 
 function AddPaperContent({ state }: { state: PreviewState }) {
   const router = useRouter();
-  const { activeTable, startReview } = useStore();
+  const { activeTable, startReview, hydrated } = useStore();
   const table = state === "trong" ? null : activeTable;
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
   }
 
   function startReading() {
-    if (!file || !table || !hasContentColumn(table.columns)) return;
+    if (!file || !table || !hydrated || !hasContentColumn(table.columns)) return;
     setReading(true);
     timer.current = setTimeout(() => {
       startReview(file.name);
@@ -149,7 +149,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
               <button
                 type="button"
                 className="button button--primary"
-                disabled={!hasContentColumn(table.columns)}
+                disabled={!hydrated || !hasContentColumn(table.columns)}
                 onClick={startReading}
               >
                 Đọc bài báo

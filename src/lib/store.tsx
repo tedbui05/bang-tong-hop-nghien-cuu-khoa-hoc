@@ -370,7 +370,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Bản xem thử chưa có AI: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
   const startReview = useCallback(
     (fileName: string | null) => {
-      if (!activeTable) return;
+      // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
+      if (!activeTable || !hydrated) return;
       const { columns } = activeTable;
       const contentIds = columns.filter((column) => column.kind === "content").map((column) => column.id);
       const cells = sortCells(
@@ -393,13 +394,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSavedTitle(null);
       setReview({
         tableId: activeTable.id,
-        paper: { ...reviewPaper, info: keepInfo(reviewPaper.info), suggested_info: keepInfo(reviewPaper.suggested_info) },
+        // Mỗi lần đọc là một bài mới có mã riêng. Dùng chung mã thì bài sau ghi đè bài trước,
+        // vì bản xem thử luôn trả về cùng một bài mẫu.
+        paper: {
+          ...reviewPaper,
+          id: `bai-${crypto.randomUUID()}`,
+          info: keepInfo(reviewPaper.info),
+          suggested_info: keepInfo(reviewPaper.suggested_info),
+        },
         fileName,
         cells,
         infoConfirmed: false,
       });
     },
-    [activeTable],
+    [activeTable, hydrated],
   );
 
   const updateCell = useCallback<Store["updateCell"]>((index, change) => {
