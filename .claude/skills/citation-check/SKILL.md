@@ -30,6 +30,11 @@ description: Quy tắc trích xuất và kiểm tra trích dẫn. Dùng khi vi�
    - Có ở nhiều trang hoặc không có ở đâu: needs_review; hiện nhãn "cần kiểm tra".
 6. Kiểm tra bị lỗi giữa chừng: needs_review, không được coi là đạt.
 
+## Cảnh báo "dẫn nguồn khác" (code thường, không dùng AI)
+- Hàm `citesOtherSource` trong `src/lib/cited-source.ts`. Câu trích có dấu hiệu dẫn nguồn khác ("Theo X (2022)", "Nguyễn (2020) cho thấy", "et al.", "(Smith, 2019)", "[12]", "据…研究") thì gắn thêm cảnh báo: "Câu trích có dẫn nguồn khác, kiểm tra xem đây có phải kết quả của chính bài này không".
+- Cảnh báo này là thêm vào, không thay thế 4 kết quả kiểm tra (verified, page_corrected, needs_review, not_found).
+- Chỉ bắt mẫu dẫn nguồn rõ ràng; câu chỉ có năm ("năm 2022, doanh thu tăng") không bị báo.
+
 ## Test bắt buộc
 - Câu khớp; khác chữ hoa; xuống dòng giữa câu; gạch nối ngắt từ; sai trang; câu bịa.
 - Câu xuất hiện ở nhiều trang; câu quá ngắn (ví dụ "n = 412"); ô not_found.
