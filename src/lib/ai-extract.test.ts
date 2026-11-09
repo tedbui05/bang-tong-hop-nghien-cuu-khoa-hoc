@@ -1,6 +1,6 @@
 // Test phần gọi AI bằng câu trả lời giả. Không gọi Gemini thật để không tốn lượt miễn phí.
 import { describe, expect, it } from "vitest";
-import { buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
+import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
 import { OVERLOADED_MESSAGE, extractPaper, readExtractBody, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
 import type { PdfPage } from "./pdf-read";
 
@@ -52,6 +52,14 @@ function fakeModel(...results: (ModelResult | object | string)[]) {
 }
 
 describe("câu lệnh gửi AI", () => {
+  it("ngôn ngữ, tên bài và tác giả lấy theo phần thân bài, không theo phần tóm tắt", () => {
+    expect(SYSTEM_INSTRUCTION).toContain("Ngôn ngữ của bài là ngôn ngữ của phần thân bài (phương pháp, kết quả, thảo luận), không phải ngôn ngữ của phần tóm tắt.");
+    expect(SYSTEM_INSTRUCTION).toContain("Nếu bài có tên bằng nhiều thứ tiếng, lấy tên bằng ngôn ngữ của phần thân bài. Giữ nguyên chữ gốc, không dịch.");
+    expect(SYSTEM_INSTRUCTION).toContain("Tên tác giả ghi theo cách viết đi kèm tên bài đã chọn");
+    // Câu cũ "Tên bài giữ nguyên ngôn ngữ gốc" đã được thay, không còn hai quy tắc trái nhau.
+    expect(SYSTEM_INSTRUCTION).not.toContain("Tên bài giữ nguyên ngôn ngữ gốc");
+  });
+
   it("gửi tên và mô tả cột nội dung, không gửi Ghi chú và Nhãn", () => {
     const text = buildUserText(makeAiRequest(columns, pages));
     expect(text).toContain('- column_id: "phuong-phap" | Tên: Phương pháp | Cần tìm: Thiết kế nghiên cứu');
