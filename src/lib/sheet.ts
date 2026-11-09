@@ -19,6 +19,18 @@ export const STATUS_ICON_PATHS: Record<LabelKey, string> = {
   manual: "M2.8 13.2l.7-2.9 7.3-7.3a1.5 1.5 0 012.2 2.2l-7.3 7.3-2.9.7z",
 };
 
+// Tên ngôn ngữ do AI hoặc sinh viên ghi có thể khác nhau ở chữ hoa và khoảng trắng ("tiếng Việt", " Tiếng  Việt").
+// Chuẩn hoá trước khi đếm để coi là một: bỏ khoảng trắng thừa, viết hoa chữ đầu.
+export function normalizeLanguage(name: string): string {
+  const clean = name.normalize("NFC").replace(/\s+/g, " ").trim();
+  return clean ? clean.charAt(0).toLocaleUpperCase("vi") + clean.slice(1) : "";
+}
+
+// Các ngôn ngữ khác nhau trong bảng, mỗi ngôn ngữ một lần, theo thứ tự gặp.
+export function listLanguages(papers: SavedPaper[]): string[] {
+  return [...new Set(papers.map((paper) => normalizeLanguage(paper.info.language ?? "")).filter(Boolean))];
+}
+
 export function countLabels(papers: SavedPaper[]): Record<LabelKey, number> {
   const counts: Record<LabelKey, number> = { verified: 0, page_corrected: 0, needs_review: 0, not_found: 0, manual: 0 };
   papers.forEach((paper) => paper.cells.forEach((cell) => (counts[getLabelKey(cell)] += 1)));

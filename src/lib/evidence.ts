@@ -31,6 +31,13 @@ export function evidenceLabel(cell: AiCell): string | null {
   return `tr. ${view.page} · ${STATUS_LABELS[view.label]}`;
 }
 
+// Nhãn đọc cho trình đọc màn hình, đủ chữ: "Trang 9, đã khớp".
+export function evidenceSpokenLabel(cell: AiCell): string | null {
+  const view = evidenceView(cell);
+  if (view.page === null) return null;
+  return `Trang ${view.page}, ${STATUS_LABELS[view.label]}`;
+}
+
 // Cắt chữ của trang thành các đoạn thường và đoạn tô.
 export function splitByRanges(text: string, page: number, ranges: TextRange[]): { text: string; marked: boolean }[] {
   const own = ranges

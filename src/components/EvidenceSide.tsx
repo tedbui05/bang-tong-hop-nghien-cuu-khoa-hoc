@@ -61,7 +61,7 @@ export function EvidenceSide({ cell, columnName, pages, lang, open, onClose }: P
           <span>Đóng</span>
         </button>
       </header>
-      {view.note ? (
+      {view.note && (pages || view.label === "needs_review") ? (
         <p className={view.label === "needs_review" ? "review-side__note review-side__note--warn" : "review-side__note"} role="status">
           {view.note}
         </p>

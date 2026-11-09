@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "r
 import { exportTableToExcel } from "@/lib/export-xlsx";
 import { checkColumnName, countUnfilled, isInfoEdited, newContentColumn, removedInfoColumns, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
-import { countLabels, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
+import { countLabels, listLanguages, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
 import { useStore } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
@@ -116,10 +116,7 @@ function Sheet({ table }: { table: SheetTable }) {
   const formatting = useCellFormatting(targets, papers);
 
   const counts = useMemo(() => countLabels(papers), [papers]);
-  const languages = useMemo(
-    () => [...new Set(papers.map((paper) => paper.info.language).filter(Boolean))],
-    [papers],
-  );
+  const languages = useMemo(() => listLanguages(papers), [papers]);
   const editedCount = useMemo(
     () =>
       papers.reduce(

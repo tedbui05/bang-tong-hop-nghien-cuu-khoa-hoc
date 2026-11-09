@@ -63,6 +63,8 @@ Phím tắt trang duyệt chỉ chạy khi đang chọn thẻ (`ReviewCard`):
 
 Ảnh so sánh giao diện nằm ở `docs/screenshots/`, mở `so-sanh.html` để xem.
 
+Bản quyền bài mẫu: ảnh chụp đưa vào git chỉ dùng dữ liệu mẫu có sẵn trong app (câu trích ngắn), hoặc làm mờ phần trang PDF và chữ của trang (ví dụ `docs/screenshots/noi-luong/`). Ảnh có hình trang hay chữ của bài trong `samples/` để ở `docs/screenshots-private/` (không đưa vào git). Test được giữ câu trích ngắn từ bài mẫu, không chép cả đoạn hay cả trang.
+
 ## Thiết kế giao diện
 
 Phương án đang dùng là **phương án 2 (Data-Dense Dashboard)** do người dùng chọn ngày 2026-11-06, có nới kích thước: nền và chữ theo bảng màu học thuật của skill, màu nhấn `#1e3a5f`, phông IBM Plex Sans và IBM Plex Serif, chữ trong bảng 14px, hàng cao 40px, đệm 8px trên dưới và 12px hai bên.

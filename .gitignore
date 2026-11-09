@@ -23,3 +23,8 @@ public/pdfjs/
 
 # Bài báo mẫu để chạy thử, không đưa vào git
 samples/
+
+# Ảnh có hình trang hoặc chữ của bài mẫu (bản quyền): chỉ giữ trên máy
+docs/screenshots-private/
+# Bản sao lưu thư mục .git trước khi dọn lịch sử
+.git-sao-luu-*/

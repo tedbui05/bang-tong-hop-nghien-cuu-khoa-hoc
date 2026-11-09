@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { evidenceLabel, evidenceView } from "@/lib/evidence";
+import { evidenceLabel, evidenceSpokenLabel, evidenceView } from "@/lib/evidence";
 import { fileHash, loadPages, savePdf } from "@/lib/paper-files";
 import type { PdfPage } from "@/lib/pdf-read";
 import { forgetPaperPdf, openPaperPdf, pageSize } from "@/lib/pdf-view";
@@ -117,7 +117,7 @@ export function EvidenceChip({ target, preview }: { target: EvidenceTarget; prev
     <button
       type="button"
       className={`ev-chip ev-chip--${label}`}
-      aria-label={`${text}. Xem đoạn gốc trong file PDF`}
+      aria-label={`${evidenceSpokenLabel(target.cell)}. Xem đoạn gốc trong file PDF`}
       aria-haspopup="dialog"
       aria-expanded={open}
       onPointerEnter={(event) => event.pointerType === "mouse" && preview.hoverIn(target, event.currentTarget)}
@@ -351,7 +351,8 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
         </div>
       </header>
 
-      {view.note ? (
+      {/* Không còn cả file lẫn chữ của trang thì không có trang để tự tìm: chỉ giữ lời nhắc của ô cần kiểm tra. */}
+      {view.note && (view.label === "needs_review" || loaded.kind !== "missing" || loaded.pages) ? (
         <p className={view.label === "needs_review" ? "ev-pop__note ev-pop__note--warn" : "ev-pop__note"} role="status">
           {view.note}
         </p>

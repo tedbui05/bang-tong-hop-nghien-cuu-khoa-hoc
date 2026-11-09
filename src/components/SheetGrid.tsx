@@ -7,7 +7,7 @@ import "@/app/sheet.css";
 import { effectiveFill, formatOf } from "@/lib/cell-format";
 import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
 import { markdownToDom } from "@/lib/markdown";
-import { evidenceLabel, evidenceView } from "@/lib/evidence";
+import { evidenceLabel, evidenceSpokenLabel, evidenceView } from "@/lib/evidence";
 import { cellMatchesFilter, foldText, paperMatches, splitMatches, STATUS_ICON_PATHS, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
 import { getLabelKey, isCellEdited, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
@@ -619,7 +619,7 @@ function evidenceChip(cell: ReviewCell, paperId: string, columnId: string, lates
   chip.type = "button";
   chip.className = `ev-chip ev-chip--grid ev-chip--${view.label}`;
   chip.tabIndex = -1;
-  chip.setAttribute("aria-label", `${text}. Xem đoạn gốc trong file PDF`);
+  chip.setAttribute("aria-label", `${evidenceSpokenLabel(cell)}. Xem đoạn gốc trong file PDF`);
   chip.setAttribute("aria-haspopup", "dialog");
   const icon = statusIcon(view.label);
   icon.removeAttribute("role");
