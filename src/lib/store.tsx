@@ -402,7 +402,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           so_trang: pages?.length ?? 0,
           ...(filledBy ? { model: filledBy.model, du_phong: filledBy.fallback ? 1 : 0 } : {}),
         });
-        if (filledBy?.fallback) logEvent("dung_model_du_phong", { model: filledBy.model });
         cells
           .filter((cell) => getLabelKey(cell) === "needs_review")
           .forEach((cell) => logEvent("o_can_kiem_tra", { cot: cell.column }));

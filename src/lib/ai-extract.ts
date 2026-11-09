@@ -4,12 +4,15 @@
 // Hàm gọi AI được truyền vào từ ngoài, nên bài test dùng câu trả lời giả, không gọi Gemini thật.
 import { parseAiAnswer, type AiAnswer } from "./ai-answer";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
+import { logEvent } from "./events";
 import type { PdfPage } from "./pdf-read";
 import { MAX_PAPER_CHARS, countPaperChars, stripReferences } from "./strip-references";
 
 export type ModelCall = {
   // Tên model cần gọi, ví dụ "gemini-3.6-flash".
   model: string;
+  // Chờ tối đa bao lâu (mili giây). Quá thời gian thì kết quả là "timeout".
+  timeoutMs: number;
   systemInstruction: string;
   userText: string;
   responseSchema: unknown;
@@ -36,7 +39,23 @@ export type ExtractErrorCode =
 export type ExtractError = { code: ExtractErrorCode; title: string; detail: string; retry: boolean };
 
 // Model chính và model dự phòng, lấy từ biến môi trường GEMINI_MODEL và GEMINI_FALLBACK_MODEL.
-export type AiModels = { primary: string; fallback?: string | null };
+// primaryTimeoutMs lấy từ GEMINI_TIMEOUT_SECONDS: model chính quá thời gian này thì chuyển sang dự phòng.
+export type AiModels = { primary: string; fallback?: string | null; primaryTimeoutMs?: number; fallbackTimeoutMs?: number };
+
+// Giới hạn thời gian chờ model chính, tính bằng giây. SỐ TẠM: khoảng gấp đôi thời gian thường của một bài
+// (đo ngày 9/11/2026 với gemini-3.6-flash, xem CLAUDE.md). Đổi bằng biến môi trường GEMINI_TIMEOUT_SECONDS.
+export const DEFAULT_PRIMARY_TIMEOUT_SECONDS = 60;
+// Model dự phòng là đường cuối cùng nên được chờ lâu hơn.
+export const FALLBACK_TIMEOUT_SECONDS = 180;
+// Chặn giá trị vô lý: tối thiểu 1 giây, tối đa 10 phút.
+const MAX_TIMEOUT_SECONDS = 600;
+
+// Đọc số giây từ biến môi trường. Bỏ trống hoặc ghi sai thì dùng mặc định.
+export function readTimeoutSeconds(raw: string | undefined, fallbackSeconds: number): number {
+  const value = Number(raw?.trim());
+  if (!raw?.trim() || !Number.isFinite(value) || value <= 0) return fallbackSeconds;
+  return Math.min(Math.max(value, 1), MAX_TIMEOUT_SECONDS);
+}
 
 export type ExtractResult =
   | {
@@ -107,10 +126,16 @@ export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callMo
   const responseSchema = buildResponseSchema(request);
 
   // Gọi một model: sai khuôn thì gửi lại một lần cho chính model đó, kèm lý do sai.
-  async function runModel(model: string): Promise<ModelRun> {
+  async function runModel(model: string, timeoutMs: number): Promise<ModelRun> {
     let problem: string | undefined;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const result = await callModel({ model, systemInstruction: SYSTEM_INSTRUCTION, userText: buildUserText(request, problem), responseSchema });
+      const result = await callModel({
+        model,
+        timeoutMs,
+        systemInstruction: SYSTEM_INSTRUCTION,
+        userText: buildUserText(request, problem),
+        responseSchema,
+      });
       if (!result.ok) return { ok: false, code: result.kind, attempts: attempt, switchable: SWITCH_TO_FALLBACK.has(result.kind) };
       const parsed = parseAiAnswer(result.text, request);
       if (parsed.ok) return { ok: true, answer: parsed.answer, attempts: attempt };
@@ -129,15 +154,17 @@ export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callMo
   });
 
   // 1. Gọi model chính.
-  const primary = await runModel(models.primary);
+  const primary = await runModel(models.primary, models.primaryTimeoutMs ?? DEFAULT_PRIMARY_TIMEOUT_SECONDS * 1000);
   if (primary.ok) return done(primary, models.primary, false, primary.attempts);
 
   // 2. Model chính quá tải hoặc quá giờ, và có model dự phòng: gọi model dự phòng đúng một lần.
   const fallback = models.fallback?.trim();
   if (primary.switchable && fallback && fallback !== models.primary) {
     console.info("[ai] model chính quá tải hoặc quá giờ, chuyển sang model dự phòng");
-    const second = await runModel(fallback);
+    const second = await runModel(fallback, models.fallbackTimeoutMs ?? FALLBACK_TIMEOUT_SECONDS * 1000);
     const attempts = primary.attempts + second.attempts;
+    // Nhật ký đo chỉ số: mỗi lần dùng model dự phòng, kèm lý do và kết quả.
+    logEvent("dung_model_du_phong", { model: fallback, ly_do: primary.code, ket_qua: second.ok ? "duoc" : "loi" });
     if (second.ok) return done(second, fallback, true, attempts);
     // Model dự phòng sai khuôn thì báo sai khuôn; lỗi khác thì báo quá tải như cũ, kèm nút Thử lại.
     const code = second.code === "bad_format" ? "bad_format" : "overloaded";

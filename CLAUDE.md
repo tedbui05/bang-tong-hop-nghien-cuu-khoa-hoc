@@ -134,15 +134,33 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 
 ## Việc cần làm sau
 
-- Chạy 3 bài trong `samples/` bằng `gemini-3.6-flash`, mỗi bài một lần, khi máy chủ Gemini gói miễn phí bớt tải (ngày 8/11/2026 bị 503 và treo quá 30 giây suốt 21:25 đến 21:35). Thử một câu ngắn trước, được rồi mới chạy bài.
-- Sau khi chạy: kiểm tra bẫy ở cột Hạn chế của bài tiếng Việt (mục 3.2.2 nói hạn chế của doanh nghiệp, không phải hạn chế của nghiên cứu, nên câu đúng là "không tìm thấy"), các ô lấy kết quả của nghiên cứu khác, các ô trích từ tóm tắt hoặc từ bảng. Bài nào sai ở mức `low` thì chạy lại riêng bài đó với `GEMINI_THINKING_LEVEL=medium` để so sánh.
-- Lần chạy thử đường đi bằng `gemini-3.5-flash-lite` (bài tiếng Việt, 8/11/2026) chạy thông nhưng đã rơi vào bẫy cột Hạn chế, lấy kết quả của Vietnam Report cho cột Kết quả, lấy tên bài và ngôn ngữ theo trang tóm tắt tiếng Anh. Kết quả nằm trong `samples/ket-qua-gemini.json`.
+- Đã chạy 3 bài trong `samples/` bằng `gemini-3.6-flash` ngày 9/11/2026, toàn bộ câu trả lời nằm trong `samples/ket-qua-gemini.json`. Còn lại: thử thêm trên bài thật khác, nhất là xem cột Câu hỏi và Kết quả còn hay trích từ phần tóm tắt không.
+
+### So sánh model trên bài tiếng Việt (Phạm Quang Hải và cộng sự, 2023)
+
+| Tiêu chí | `gemini-3.5-flash-lite` (8 và 9/11) | `gemini-3.6-flash`, mức `low` | `gemini-3.6-flash`, mức `medium` |
+|---|---|---|---|
+| Bẫy cột Hạn chế (câu đúng là "không tìm thấy") | Rơi vào bẫy: lấy hạn chế của doanh nghiệp ở trang 8 | Đúng: "không tìm thấy" | Đúng: "không tìm thấy" |
+| Lấy kết quả của nguồn khác | Có: cột Kết quả lấy số liệu "Theo Vietnam Report (2022)" | Không | Không |
+| Tên bài | Tiếng Anh, theo trang tóm tắt tiếng Anh | Tiếng Việt | Tiếng Việt |
+| Tác giả | Không dấu ("Pham Quang Hai") | Có dấu ("Phạm Quang Hải") | Có dấu |
+| Ngôn ngữ | "Tiếng Anh" (sai) | "Tiếng Việt" | "Tiếng Việt" |
+| Trích từ phần tóm tắt | Cột Câu hỏi (tóm tắt tiếng Anh) | Cột Câu hỏi, Kết quả | Không |
+| Thời gian | 4 đến 11 giây | 22 giây | 48 giây |
+
+Lần chạy bản rút gọn ngày 9/11 là sau khi đã sửa quy tắc 11 (ngôn ngữ, tên bài lấy theo thân bài), nhưng vẫn lấy tên bài và ngôn ngữ theo trang tiếng Anh.
+
+### Kết quả `gemini-3.6-flash` mức `low` trên 2 bài còn lại (9/11/2026)
+
+- Bài tiếng Anh (Lin và cộng sự, 2023): 131 giây, 5 ô có câu trích, cả 5 đã khớp. Cột Phương pháp và Kết quả trích từ Abstract (trang 1). Không ô nào lấy kết quả của nghiên cứu khác, không ô nào trích từ bảng.
+- Bài tiếng Trung (汪阳洁 và cộng sự, 2022): 22 giây, 5 ô có câu trích, cả 5 đã khớp. Cột Câu hỏi trích từ 内容提要 (tóm tắt, trang 1). Không ô nào lấy kết quả của nghiên cứu khác, không ô nào trích từ bảng. Không có nơi xuất bản.
+- Mức `medium` trên bài tiếng Việt: ô Câu hỏi thành "cần kiểm tra" dù AI chép đúng, vì câu vắt từ trang 2 sang trang 3 và dòng đầu trang "P.Q. Hai et al. / VNU Journal…" chen giữa câu (xem "Việc cần quyết định sau").
 
 - Phiên làm màn hình duyệt: mỗi cột có một câu hỏi gợi ý kiểm tra, hiện khi duyệt ô. Ví dụ cột Hạn chế: "Đây là hạn chế của chính nghiên cứu, hay của đối tượng được nghiên cứu?"; cột Kết quả: "Đây là kết quả của bài này, hay của nghiên cứu khác mà bài dẫn lại?".
 
 ## Việc cần quyết định sau
 
-- Đầu trang và chân trang xen giữa câu vắt qua hai trang: thử trên bài thật rồi quyết định có xử lý thêm không. Hiện những câu này sẽ thành "cần kiểm tra".
+- Đầu trang và chân trang xen giữa câu vắt qua hai trang: hiện những câu này thành "cần kiểm tra". Đã gặp trên bài thật ngày 9/11/2026: ô Câu hỏi của bài tiếng Việt (mức `medium`) chép đúng nhưng bị dòng đầu trang 3 "P.Q. Hai et al. / VNU Journal of Economics and Business, Vol. 3, No. 1 (2023) 28-37" chen giữa câu. Cần quyết định có xử lý không.
 - PDF tiếng Trung tách chữ Latin bằng khoảng trắng (ví dụ "Ｓｔｉ ｇ ｌｅｒ"): code kiểm tra chưa xử lý, câu như vậy thành "cần kiểm tra". Khoảng trắng chen giữa chữ Hán, giữa số và dấu câu, và từ ghép có gạch nối bị ngắt cuối dòng thì đã xử lý (ngày 9/11/2026).
 - Số trang trong file PDF có thể lệch với số in trên trang: giao diện đang ghi "trang X của file PDF". Thử trên bài thật rồi quyết định có hiện thêm số in không.
 - Xuất Excel đang bỏ cột ẩn và giữ mọi bài dù đang lọc: hỏi lại người dùng sau buổi thử thật.
@@ -170,7 +188,7 @@ Bản này chưa làm, nếu thấy cần phải hỏi người dùng trước:
   - Model đang dùng: `gemini-3.6-flash`, mức suy nghĩ `low` (đổi bằng `GEMINI_THINKING_LEVEL` nếu cần).
   - `gemini-2.5-flash` đã ngừng cho người dùng mới (Google trả lỗi 404). `gemini-3.7-flash` và `gemini-3.8-flash` trả lời quá chậm với gói miễn phí, quá 30 giây cho một câu một chữ (thử ngày 8/11/2026). Có thể thử lại sau.
   - Model dự phòng: `gemini-3.5-flash-lite`, đặt ở `GEMINI_FALLBACK_MODEL`, app tự chuyển khi model chính quá tải. Nhanh hơn nhưng là bản rút gọn, dễ sai ở cột cần phân biệt tinh tế. `gemini-3.6-flash` gói miễn phí quá tải liên tục từ tối 8/11/2026.
-  - Model chính treo thì phải chờ hết giới hạn 180 giây mới chuyển sang dự phòng. Thử thật rồi quyết định có rút ngắn không.
+  - Giới hạn chờ model chính: `GEMINI_TIMEOUT_SECONDS`, mặc định 60 giây (số tạm, khoảng gấp đôi thời gian thường của bài tiếng Việt và tiếng Trung: 22 giây). Quá giờ thì chuyển sang model dự phòng; model dự phòng được chờ 180 giây. Bài tiếng Anh mẫu mất 131 giây ngày 9/11/2026, nên với mặc định 60 giây bài này sẽ chuyển sang model dự phòng. Thử thêm rồi chỉnh.
 - Supabase để lưu dữ liệu
 - Xuất file Excel bằng exceljs (MIT)
 

@@ -1,12 +1,9 @@
 // Gọi Gemini. Chỉ chạy trên máy chủ: key nằm trong biến môi trường, không bao giờ gửi cho trình duyệt.
 // Không ghi key, câu lệnh hay lời gốc của máy chủ Gemini vào log, chỉ ghi mã lỗi HTTP.
 import "server-only";
-import type { AiModels, CallModel, ModelResult } from "./ai-extract";
+import { DEFAULT_PRIMARY_TIMEOUT_SECONDS, readTimeoutSeconds, type AiModels, type CallModel, type ModelResult } from "./ai-extract";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-
-// Bài 30.000 ký tự có thể mất một đến hai phút với model có bước suy nghĩ.
-const TIMEOUT_MS = 180_000;
 
 // Mức suy nghĩ của model Gemini 3 trước khi trả lời. Mặc định "low": nhanh và tốn ít lượt hơn mức
 // mặc định của model ("medium"); việc điền bảng chủ yếu là tìm và chép câu trong bài nên không cần suy luận sâu.
@@ -24,11 +21,16 @@ type GeminiResponse = {
 
 // Model chính (GEMINI_MODEL) và model dự phòng (GEMINI_FALLBACK_MODEL, có thể bỏ trống).
 // Model dự phòng chỉ được gọi khi model chính quá tải hoặc quá giờ (xem ai-extract.ts).
+// Giới hạn chờ model chính đọc từ GEMINI_TIMEOUT_SECONDS (số tạm, xem ai-extract.ts).
 export function geminiModels(): AiModels {
-  return { primary: process.env.GEMINI_MODEL?.trim() ?? "", fallback: process.env.GEMINI_FALLBACK_MODEL?.trim() || null };
+  return {
+    primary: process.env.GEMINI_MODEL?.trim() ?? "",
+    fallback: process.env.GEMINI_FALLBACK_MODEL?.trim() || null,
+    primaryTimeoutMs: readTimeoutSeconds(process.env.GEMINI_TIMEOUT_SECONDS, DEFAULT_PRIMARY_TIMEOUT_SECONDS) * 1000,
+  };
 }
 
-export const callGemini: CallModel = async ({ model, systemInstruction, userText, responseSchema }) => {
+export const callGemini: CallModel = async ({ model, timeoutMs, systemInstruction, userText, responseSchema }) => {
   const key = process.env.GEMINI_API_KEY;
   if (!key || !model) {
     console.error("[gemini] thiếu GEMINI_API_KEY hoặc tên model");
@@ -53,7 +55,7 @@ export const callGemini: CallModel = async ({ model, systemInstruction, userText
           thinkingConfig: { thinkingLevel: thinkingLevel() },
         },
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
   } catch (error) {

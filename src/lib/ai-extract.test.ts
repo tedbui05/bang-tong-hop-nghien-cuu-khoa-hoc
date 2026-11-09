@@ -1,7 +1,7 @@
 // Test phần gọi AI bằng câu trả lời giả. Không gọi Gemini thật để không tốn lượt miễn phí.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
-import { OVERLOADED_MESSAGE, extractPaper, readExtractBody, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
+import { DEFAULT_PRIMARY_TIMEOUT_SECONDS, FALLBACK_TIMEOUT_SECONDS, OVERLOADED_MESSAGE, extractPaper, readExtractBody, readTimeoutSeconds, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
 import type { PdfPage } from "./pdf-read";
 import { filledByText } from "./types";
 
@@ -307,6 +307,51 @@ describe("model dự phòng", () => {
     const result = await extractPaper(columns, pages, model.call, { primary: "model-chinh", fallback: "model-chinh" });
     expect(!result.ok && result.error.code).toBe("overloaded");
     expect(model.calls).toHaveLength(1);
+  });
+});
+
+describe("giới hạn thời gian và nhật ký của model dự phòng", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("đọc GEMINI_TIMEOUT_SECONDS, bỏ trống hoặc ghi sai thì dùng mặc định", () => {
+    expect(readTimeoutSeconds(undefined, 60)).toBe(60);
+    expect(readTimeoutSeconds("", 60)).toBe(60);
+    expect(readTimeoutSeconds("abc", 60)).toBe(60);
+    expect(readTimeoutSeconds("-5", 60)).toBe(60);
+    expect(readTimeoutSeconds("0", 60)).toBe(60);
+    expect(readTimeoutSeconds(" 45 ", 60)).toBe(45);
+    expect(readTimeoutSeconds("1", 60)).toBe(1);
+    expect(readTimeoutSeconds("0.5", 60)).toBe(1);
+    expect(readTimeoutSeconds("99999", 60)).toBe(600);
+  });
+
+  it("giới hạn thời gian chỉ áp cho model chính; model dự phòng được chờ lâu hơn", async () => {
+    const model = fakeModel({ ok: false, kind: "timeout" }, goodAnswer);
+    await extractPaper(columns, pages, model.call, { ...WITH_FALLBACK, primaryTimeoutMs: 1000 });
+    expect(model.calls.map((call) => call.timeoutMs)).toEqual([1000, FALLBACK_TIMEOUT_SECONDS * 1000]);
+  });
+
+  it("không đặt giới hạn thì model chính dùng số mặc định", async () => {
+    const model = fakeModel(goodAnswer);
+    await extractPaper(columns, pages, model.call, NO_FALLBACK);
+    expect(model.calls[0].timeoutMs).toBe(DEFAULT_PRIMARY_TIMEOUT_SECONDS * 1000);
+  });
+
+  it("ghi thao tác dung_model_du_phong mỗi lần gọi model dự phòng, kèm lý do và kết quả", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    await extractPaper(columns, pages, fakeModel({ ok: false, kind: "timeout" }, goodAnswer).call, WITH_FALLBACK);
+    await extractPaper(columns, pages, fakeModel({ ok: false, kind: "overloaded" }, { ok: false, kind: "overloaded" }).call, WITH_FALLBACK);
+    const events = log.mock.calls.filter((args) => args[0] === "[thao-tac]" && args[1] === "dung_model_du_phong");
+    expect(events.map((args) => args[2])).toMatchObject([
+      { model: "model-du-phong", ly_do: "timeout", ket_qua: "duoc" },
+      { model: "model-du-phong", ly_do: "overloaded", ket_qua: "loi" },
+    ]);
+  });
+
+  it("không gọi model dự phòng thì không ghi thao tác dung_model_du_phong", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    await extractPaper(columns, pages, fakeModel(goodAnswer).call, WITH_FALLBACK);
+    expect(log.mock.calls.some((args) => args[1] === "dung_model_du_phong")).toBe(false);
   });
 });
 
