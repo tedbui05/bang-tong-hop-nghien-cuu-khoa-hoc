@@ -1,7 +1,7 @@
 // Test luồng xử lý một bài: đọc PDF giả, máy chủ giả trả câu trả lời giả. Không gọi AI thật.
 import { describe, expect, it, vi } from "vitest";
 import { suggestedColumns } from "./columns";
-import { canQuickApprove } from "./paper-pipeline";
+import { canQuickApprove, pruneToColumns } from "./paper-pipeline";
 import type { PdfPage } from "./pdf-read";
 import { processPaper, type ProcessDeps } from "./process-paper";
 import { getLabelKey } from "./types";
@@ -147,5 +147,20 @@ describe("duyệt nhanh cả dòng", () => {
     expect(canQuickApprove([{ ...allVerified[0], cites_other_source: true }, ...allVerified.slice(1)])).toBe(false);
     // Đã duyệt hết thì không cần nút nữa.
     expect(canQuickApprove(allVerified.map((cell) => ({ ...cell, review: "confirmed" as const })))).toBe(false);
+  });
+});
+
+describe("xoá cột trong lúc AI đang đọc bài", () => {
+  it("bỏ ô và thông tin bài của cột đã xoá, để thêm lại cột thì ô vẫn trống", async () => {
+    const result = await processPaper(input(), deps(answer()));
+    if (!result.ok) throw new Error();
+    const remaining = columns.filter((column) => column.id !== "han-che" && column.id !== "info-year");
+    const pruned = pruneToColumns(result.session, remaining);
+    expect(pruned.cells.map((cell) => cell.column)).not.toContain("han-che");
+    expect(pruned.cells).toHaveLength(result.session.cells.length - 1);
+    expect(pruned.paper.info.year).toBeUndefined();
+    expect(pruned.paper.suggested_info.year).toBeUndefined();
+    expect(pruned.paper.info.title).toBe("Green credit and innovation");
+    expect(pruned.paper.info.authors).toBe("Lin");
   });
 });

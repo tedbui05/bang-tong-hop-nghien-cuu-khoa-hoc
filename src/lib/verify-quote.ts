@@ -249,7 +249,7 @@ export function verifyCells(cells: AiCell[], pages: PdfPage[]): AiCell[] {
       // Vị trí câu trích để tô vàng khi xem bằng chứng. Chỉ để hiển thị, không đổi kết quả kiểm tra.
       // Ô "cần kiểm tra" không tô, vì chưa biết câu nằm ở đâu.
       const quote_ranges =
-        result.check !== "needs_review" && result.page !== null ? safeLocate(cell.quote_original ?? "", result.page, pages) : null;
+        result.check !== "needs_review" && result.page !== null ? safeLocate(cell.quote_original ?? "", result.page, pages, bodyPages) : null;
       return {
         ...cell,
         ai_page,
@@ -277,26 +277,46 @@ export function verifyCells(cells: AiCell[], pages: PdfPage[]): AiCell[] {
 type Skeleton = { chars: string[]; at: { page: number; index: number }[] };
 
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
-const DIGIT = /\p{N}/u;
 
-function addSkeleton(target: Skeleton, text: string, page: number, from: number, to: number, keepDigits: boolean) {
+// skip: vị trí các ký tự bỏ qua (số chỉ dẫn dính vào chữ).
+function addSkeleton(target: Skeleton, text: string, page: number, from: number, to: number, skip?: Set<number>) {
   let index = from;
   while (index < to) {
     const codePoint = text.codePointAt(index)!;
     const char = String.fromCodePoint(codePoint);
-    // NFKD tách dấu ra khỏi chữ ("ế" thành "e" + dấu), "ﬁ" thành "fi", số toàn khổ thành số thường.
-    for (const part of char.normalize("NFKD").toLowerCase()) {
-      if (!LETTER_OR_DIGIT.test(part) || (!keepDigits && DIGIT.test(part))) continue;
-      target.chars.push(part);
-      target.at.push({ page, index });
+    if (!skip?.has(index)) {
+      // NFKD tách dấu ra khỏi chữ ("ế" thành "e" + dấu), "ﬁ" thành "fi", số toàn khổ thành số thường.
+      for (const part of char.normalize("NFKD").toLowerCase()) {
+        if (!LETTER_OR_DIGIT.test(part)) continue;
+        target.chars.push(part);
+        target.at.push({ page, index });
+      }
     }
     index += char.length;
   }
 }
 
-function quoteSkeleton(quote: string, keepDigits: boolean): string[] {
+// Vị trí các chữ số của số chỉ dẫn dính vào chữ ("Pearson29", "returns.11"), nhận ra đúng như Phần 2b.
+// Chỉ đổi các kiểu gạch về một (không đổi độ dài chữ) để vị trí vẫn khớp với chữ gốc.
+function citationDigits(text: string): Set<number> {
+  const skip = new Set<number>();
+  for (const match of text.replace(DASHES, "-").matchAll(CITATION_MARK)) {
+    for (let i = 0; i < match[0].length; i++) skip.add(match.index! + i);
+  }
+  return skip;
+}
+
+// Chữ của trang sau khi cắt tài liệu tham khảo có thể ngắn hơn: chỉ tìm trong phần đầu giống hệt chữ gốc.
+function commonPrefix(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+
+function quoteSkeleton(quote: string): string[] {
   const skeleton: Skeleton = { chars: [], at: [] };
-  addSkeleton(skeleton, quote, 0, 0, quote.length, keepDigits);
+  addSkeleton(skeleton, quote, 0, 0, quote.length);
   return skeleton.chars;
 }
 
@@ -328,21 +348,25 @@ function toRanges(skeleton: Skeleton, start: number, length: number, pages: PdfP
 }
 
 // Trả về các đoạn cần tô (một đoạn, hoặc hai đoạn nếu câu vắt qua hai trang). Không tìm được thì trả về null.
-export function locateQuote(quote: string, page: number, pages: PdfPage[]): TextRange[] | null {
+// bodyPages: chữ đã cắt tài liệu tham khảo (như lúc kiểm tra), để không tô nhầm một câu trong danh mục tài liệu.
+export function locateQuote(quote: string, page: number, pages: PdfPage[], bodyPages: PdfPage[] = pages): TextRange[] | null {
   const index = pages.findIndex((item) => item.page === page);
   if (index === -1) return null;
   const current = pages[index];
   const next = pages[index + 1];
+  const limit = (item: PdfPage) => commonPrefix(item.text, bodyPages.find((body) => body.page === item.page)?.text ?? "");
   const edgeKeys = next ? findRepeatedEdgeLines(pages) : new Set<string>();
+  const needle = quoteSkeleton(quote);
+  if (needle.length === 0) return null;
 
-  // Thử giữ chữ số trước; không được thì bỏ chữ số, để số chỉ dẫn dính vào chữ ("innovation.12") không cản.
-  for (const keepDigits of [true, false]) {
-    const needle = quoteSkeleton(quote, keepDigits);
-    if (needle.length === 0) return null;
+  // Thử giữ nguyên chữ của trang trước; không được thì bỏ số chỉ dẫn dính vào chữ ("Pearson29").
+  // Không bao giờ bỏ con số thật, để không tô nhầm một câu khác chỉ khác con số.
+  for (const dropMarks of [false, true]) {
+    const skipOf = (item: PdfPage) => (dropMarks ? citationDigits(item.text) : undefined);
 
     // 6a. Câu nằm gọn trong trang.
     const own: Skeleton = { chars: [], at: [] };
-    addSkeleton(own, current.text, current.page, 0, current.text.length, keepDigits);
+    addSkeleton(own, current.text, current.page, 0, limit(current), skipOf(current));
     const found = findIn(own.chars, needle);
     if (found !== -1) return toRanges(own, found, needle.length, pages);
 
@@ -350,10 +374,10 @@ export function locateQuote(quote: string, page: number, pages: PdfPage[]): Text
     if (next) {
       for (const trim of [false, true]) {
         const joined: Skeleton = { chars: [], at: [] };
-        const end = trim ? edgeBoundary(current.text, edgeKeys, "end") : current.text.length;
+        const end = Math.min(trim ? edgeBoundary(current.text, edgeKeys, "end") : current.text.length, limit(current));
         const start = trim ? edgeBoundary(next.text, edgeKeys, "start") : 0;
-        addSkeleton(joined, current.text, current.page, 0, end, keepDigits);
-        addSkeleton(joined, next.text, next.page, start, next.text.length, keepDigits);
+        addSkeleton(joined, current.text, current.page, 0, end, skipOf(current));
+        addSkeleton(joined, next.text, next.page, start, Math.max(start, limit(next)), skipOf(next));
         const at = findIn(joined.chars, needle);
         if (at !== -1) return toRanges(joined, at, needle.length, pages);
       }
@@ -362,9 +386,9 @@ export function locateQuote(quote: string, page: number, pages: PdfPage[]): Text
   return null;
 }
 
-function safeLocate(quote: string, page: number, pages: PdfPage[]): TextRange[] | null {
+function safeLocate(quote: string, page: number, pages: PdfPage[], bodyPages: PdfPage[]): TextRange[] | null {
   try {
-    return locateQuote(quote, page, pages);
+    return locateQuote(quote, page, pages, bodyPages);
   } catch {
     return null;
   }

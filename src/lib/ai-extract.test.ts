@@ -253,7 +253,37 @@ describe("model dự phòng", () => {
     if (result.ok) throw new Error("Mong đợi báo lỗi");
     expect(result.error.code).toBe("quota");
     expect(result.error.title).toBe("Đã hết lượt AI miễn phí hôm nay");
-    expect(result.error.retry).toBe(true);
+    // Thử lại trong ngày vô ích: không có nút Thử lại.
+    expect(result.error.retry).toBe(false);
+  });
+
+  it("tổng thời gian chờ không vượt giới hạn của máy chủ: model dự phòng chỉ được chờ phần còn lại", async () => {
+    let clock = 0;
+    const calls: number[] = [];
+    const call: CallModel = async (request) => {
+      calls.push(request.timeoutMs);
+      clock += request.timeoutMs; // mỗi lần gọi đều chờ hết giờ
+      return { ok: false, kind: "timeout" };
+    };
+    const result = await extractPaper(columns, pages, call, { ...WITH_FALLBACK, now: () => clock });
+    expect(!result.ok && result.error.code).toBe("overloaded");
+    expect(calls[0]).toBe(DEFAULT_PRIMARY_TIMEOUT_SECONDS * 1000);
+    expect(calls[1]).toBe(285_000 - DEFAULT_PRIMARY_TIMEOUT_SECONDS * 1000);
+    expect(calls.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(285_000);
+  });
+
+  it("gửi lại vì sai khuôn cũng không vượt tổng thời gian", async () => {
+    let clock = 0;
+    const calls: number[] = [];
+    const call: CallModel = async (request) => {
+      calls.push(request.timeoutMs);
+      clock += 140_000; // mỗi lần trả lời sai khuôn sau 140 giây
+      return { ok: true, text: "sai" };
+    };
+    const result = await extractPaper(columns, pages, call, { ...WITH_FALLBACK, now: () => clock });
+    // Lần gửi lại chỉ được chờ phần thời gian còn lại; sai khuôn hai lần thì báo sai định dạng.
+    expect(calls).toEqual([150_000, 145_000]);
+    expect(!result.ok && result.error.code).toBe("bad_format");
   });
 
   it("không có model dự phòng, hết lượt trong ngày: báo hết lượt", async () => {

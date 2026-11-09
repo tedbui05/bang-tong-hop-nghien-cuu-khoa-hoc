@@ -4,6 +4,7 @@
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type { TextContent, TextItem } from "pdfjs-dist/types/src/display/api";
 import { loadPdf } from "./paper-files";
+import { joinTextItems } from "./pdf-read";
 import type { TextRange } from "./types";
 
 type PdfLib = typeof import("pdfjs-dist");
@@ -23,9 +24,12 @@ function loadLib(): Promise<PdfLib> {
   return lib;
 }
 
-// Giữ tối đa chừng này file đang mở, chừng này trang đã vẽ. Quá thì bỏ cái dùng lâu nhất.
+// Giữ tối đa chừng này file đang mở. Trang đã vẽ được giữ theo tổng số điểm ảnh (khoảng 160 MB bộ nhớ);
+// quá thì bỏ trang dùng lâu nhất.
 const MAX_DOCS = 3;
-const MAX_CANVASES = 24;
+const MAX_CACHED_PIXELS = 40_000_000;
+// Một ảnh trang không vượt chừng này điểm ảnh: Safari trên iPhone không vẽ được ảnh lớn hơn khoảng 16,7 triệu điểm.
+const MAX_CANVAS_PIXELS = 16_000_000;
 
 const docs = new Map<string, Promise<PDFDocumentProxy | null>>();
 const canvases = new Map<string, HTMLCanvasElement>();
@@ -102,26 +106,43 @@ function pageText(paperId: string, page: PDFPageProxy): Promise<TextContent> {
   return text;
 }
 
+function cachedPixels() {
+  let total = 0;
+  for (const canvas of canvases.values()) total += canvas.width * canvas.height;
+  return total;
+}
+
 async function drawCanvas(paperId: string, page: PDFPageProxy, scale: number): Promise<HTMLCanvasElement> {
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  const key = `${paperId}:${page.pageNumber}:${scale.toFixed(3)}:${ratio}`;
+  const viewport = page.getViewport({ scale });
+  // Màn hình mật độ cao vẽ nét hơn, nhưng giảm lại khi phóng to để ảnh không quá lớn.
+  const ratio = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height)));
+  const key = `${paperId}:${page.pageNumber}:${scale.toFixed(3)}:${ratio.toFixed(3)}`;
   const cached = canvases.get(key);
   if (cached) {
     touch(canvases, key, cached);
     return cached;
   }
-  const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.floor(viewport.width * ratio);
   canvas.height = Math.floor(viewport.height * ratio);
   await page.render({ canvas, canvasContext: canvas.getContext("2d")!, viewport, transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined })
     .promise;
   touch(canvases, key, canvas);
-  while (canvases.size > MAX_CANVASES) canvases.delete(canvases.keys().next().value!);
+  while (canvases.size > 1 && cachedPixels() > MAX_CACHED_PIXELS) {
+    const oldest = canvases.keys().next().value!;
+    const dropped = canvases.get(oldest)!;
+    canvases.delete(oldest);
+    // Trả bộ nhớ ngay, không chờ trình duyệt tự dọn.
+    dropped.width = dropped.height = 0;
+  }
   return canvas;
 }
 
-export type RenderedPage = { marks: HTMLElement[] };
+export type RenderedPage = {
+  marks: HTMLElement[];
+  // false: trang có câu trích nhưng không tô được (chữ của trang khác chữ đã lưu lúc đọc bài).
+  marked: boolean;
+};
 
 // Vẽ một trang vào khung: ảnh trang, lớp chữ trong suốt (bôi đen, chép được) và các đoạn tô vàng.
 export async function renderPdfPage(
@@ -132,6 +153,8 @@ export async function renderPdfPage(
   scale: number,
   ranges: TextRange[],
   isCurrent: () => boolean,
+  // Chữ của trang đã lưu lúc đọc bài. Vị trí tô tính trên chữ này: khác chữ lấy lại thì không tô, tránh tô lệch chỗ.
+  expectedText?: string,
 ): Promise<RenderedPage | null> {
   const pdfjs = await loadLib();
   const page = await doc.getPage(pageNumber);
@@ -165,8 +188,12 @@ export async function renderPdfPage(
 
   const items = content.items.filter((item): item is TextItem => "str" in item);
   const own = ranges.filter((range) => range.page === pageNumber);
-  return { marks: markRanges(textLayer.textDivs, items, own) };
+  if (!own.length) return { marks: [], marked: true };
+  if (expectedText !== undefined && joinTextItems(items) !== expectedText) return { marks: [], marked: false };
+  const marks = markRanges(textLayer.textDivs, items, own);
+  return { marks, marked: marks.length > 0 };
 }
+
 
 // Đoạn cần tô trong từng mẩu chữ của pdf.js. Vị trí tính theo chữ của trang = joinTextItems(items)
 // (pdf-read.ts): nối các mẩu, thêm một dấu xuống dòng sau mẩu có hasEOL.

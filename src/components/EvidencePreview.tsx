@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { evidenceLabel, evidenceSpokenLabel, evidenceView } from "@/lib/evidence";
+import { evidenceLabel, evidenceSpokenLabel, evidenceView, NOT_MARKED_NOTE } from "@/lib/evidence";
 import { fileHash, loadPages, savePdf } from "@/lib/paper-files";
 import type { PdfPage } from "@/lib/pdf-read";
 import { forgetPaperPdf, openPaperPdf, pageSize } from "@/lib/pdf-view";
@@ -33,6 +33,8 @@ export function useEvidencePreview() {
   const [state, setState] = useState<PreviewState | null>(null);
   const current = useRef<PreviewState | null>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Nhãn vừa được trả focus khi đóng khung: lần focus đó không được mở lại khung.
+  const returning = useRef<HTMLElement | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const set = useCallback((next: PreviewState | null) => {
@@ -75,6 +77,10 @@ export function useEvidencePreview() {
       },
       focusIn(target: EvidenceTarget, anchor: HTMLElement) {
         clearTimers();
+        if (returning.current === anchor) {
+          returning.current = null;
+          return;
+        }
         if (current.current?.anchor === anchor) return;
         set({ target, anchor, mode: "focus", fullscreen: false });
       },
@@ -90,9 +96,22 @@ export function useEvidencePreview() {
       },
       close(returnFocus = false) {
         clearTimers();
-        const anchor = current.current?.anchor;
+        const now = current.current;
         set(null);
-        if (returnFocus && anchor?.isConnected) anchor.focus({ preventScroll: true });
+        if (!returnFocus || !now) return;
+        // Bảng có thể đã vẽ lại ô (nhãn cũ bị thay): tìm nhãn mới của cùng ô.
+        const anchor = now.anchor.isConnected
+          ? now.anchor
+          : document.querySelector<HTMLElement>(
+              `.ev-chip[data-paper="${CSS.escape(now.target.paper.id)}"][data-column="${CSS.escape(now.target.cell.column)}"]`,
+            );
+        if (!anchor) return;
+        returning.current = anchor;
+        anchor.focus({ preventScroll: true });
+        // Nếu focus không gây sự kiện (nhãn đã đang được focus) thì bỏ cờ.
+        setTimeout(() => {
+          if (returning.current === anchor) returning.current = null;
+        }, 0);
       },
       isOpenFor(anchor: HTMLElement) {
         return current.current?.anchor === anchor;
@@ -117,6 +136,8 @@ export function EvidenceChip({ target, preview }: { target: EvidenceTarget; prev
     <button
       type="button"
       className={`ev-chip ev-chip--${label}`}
+      data-paper={target.paper.id}
+      data-column={target.cell.column}
       aria-label={`${evidenceSpokenLabel(target.cell)}. Xem đoạn gốc trong file PDF`}
       aria-haspopup="dialog"
       aria-expanded={open}
@@ -153,7 +174,7 @@ export function chipKey(event: KeyboardEvent<HTMLElement> | globalThis.KeyboardE
     preview.close(true);
   } else if (event.key === "Tab" && !event.shiftKey && preview.state && !preview.state.fullscreen) {
     // Tab từ nhãn đi vào khung xem trước.
-    const first = document.querySelector<HTMLElement>(".ev-pop button");
+    const first = document.querySelector<HTMLElement>(".ev-pop button:not(:disabled)");
     if (first) {
       event.preventDefault();
       first.focus();
@@ -175,7 +196,11 @@ export function EvidencePreviewLayer({ preview }: { preview: EvidencePreviewApi 
   );
 }
 
-type Loaded = { kind: "loading" } | { kind: "pdf"; doc: PDFDocumentProxy } | { kind: "missing"; pages: PdfPage[] | null };
+type Loaded =
+  | { kind: "loading" }
+  // pages: chữ của trang đã lưu lúc đọc bài, để kiểm tra vị trí tô không lệch.
+  | { kind: "pdf"; doc: PDFDocumentProxy; pages: PdfPage[] | null }
+  | { kind: "missing"; pages: PdfPage[] | null };
 
 // Mở file PDF đã giữ; không còn file thì lấy chữ của trang (nếu còn) để hiện thay.
 function usePaperPdf(target: EvidenceTarget) {
@@ -187,14 +212,9 @@ function usePaperPdf(target: EvidenceTarget) {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const doc = await openPaperPdf(paperId);
+      const [doc, pages] = await Promise.all([openPaperPdf(paperId), knownPages ? Promise.resolve(knownPages) : loadPages(paperId)]);
       if (!alive) return;
-      if (doc) {
-        setLoaded({ kind: "pdf", doc });
-        return;
-      }
-      const pages = knownPages ?? (await loadPages(paperId));
-      if (alive) setLoaded({ kind: "missing", pages });
+      setLoaded(doc ? { kind: "pdf", doc, pages } : { kind: "missing", pages });
     })();
     return () => {
       alive = false;
@@ -214,6 +234,9 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
   const scroller = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  const [failed, setFailed] = useState(false);
+  // Trang có câu trích nhưng không tô được (chữ của trang khác lúc đọc bài).
+  const [unmarked, setUnmarked] = useState(false);
 
   // Đặt khung cạnh nhãn: bên dưới nếu đủ chỗ, không thì bên trên. Điện thoại thì trượt lên từ dưới (CSS).
   useEffect(() => {
@@ -237,9 +260,14 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // Bảng vẽ lại dòng thì nhãn cũ bị gỡ khỏi trang mà không có sự kiện rời chuột: tự kiểm tra định kỳ.
+    const watch = setInterval(() => {
+      if (!anchor.isConnected) preview.close(true);
+    }, 400);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      clearInterval(watch);
     };
   }, [anchor, preview]);
 
@@ -266,7 +294,9 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
   useEffect(() => {
     if (loaded.kind !== "pdf" || view.page === null) return;
     let alive = true;
-    void pageSize(loaded.doc, view.page).then((value) => alive && setSize(value)).catch(() => undefined);
+    void pageSize(loaded.doc, view.page)
+      .then((value) => alive && setSize(value))
+      .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
@@ -284,7 +314,7 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
         preview.close(true);
       }
     } else if (event.key === "Tab" && event.shiftKey) {
-      const first = box.current?.querySelector<HTMLElement>("button");
+      const first = box.current?.querySelector<HTMLElement>("button:not(:disabled)");
       if (document.activeElement === first) {
         event.preventDefault();
         anchor.focus({ preventScroll: true });
@@ -296,7 +326,8 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
   const scale = fitScale * zoom;
   const extraPages = [...new Set(view.ranges.map((range) => range.page))].filter((page) => page !== view.page);
 
-  const scrollToMark = useCallback((mark: HTMLElement | null) => {
+  const scrollToMark = useCallback((mark: HTMLElement | null, marked: boolean) => {
+    setUnmarked(!marked);
     const element = scroller.current;
     if (!element || !mark) return;
     const markBox = mark.getBoundingClientRect();
@@ -356,19 +387,42 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
         <p className={view.label === "needs_review" ? "ev-pop__note ev-pop__note--warn" : "ev-pop__note"} role="status">
           {view.note}
         </p>
+      ) : unmarked && !view.note ? (
+        <p className="ev-pop__note" role="status">
+          {NOT_MARKED_NOTE}
+        </p>
       ) : null}
 
       {loaded.kind === "loading" ? (
         <p className="ev-pop__loading" role="status">
           <span className="spinner" aria-hidden="true" /> Đang mở trang {view.page} của file PDF…
         </p>
+      ) : loaded.kind === "pdf" && failed ? (
+        <PdfError pages={loaded.pages} target={target} />
       ) : loaded.kind === "pdf" && view.page !== null ? (
         <div ref={scroller} className="ev-pop__scroll">
           {width && size ? (
             <>
-              <PdfPageView doc={loaded.doc} paperId={target.paper.id} page={view.page} scale={scale} ranges={view.ranges} onRendered={scrollToMark} placeholder={size} />
+              <PdfPageView
+                doc={loaded.doc}
+                paperId={target.paper.id}
+                page={view.page}
+                scale={scale}
+                ranges={view.ranges}
+                expectedText={pageTextOf(loaded.pages, view.page)}
+                onRendered={scrollToMark}
+                placeholder={size}
+              />
               {extraPages.map((page) => (
-                <PdfPageView key={page} doc={loaded.doc} paperId={target.paper.id} page={page} scale={scale} ranges={view.ranges} />
+                <PdfPageView
+                  key={page}
+                  doc={loaded.doc}
+                  paperId={target.paper.id}
+                  page={page}
+                  scale={scale}
+                  ranges={view.ranges}
+                  expectedText={pageTextOf(loaded.pages, page)}
+                />
               ))}
             </>
           ) : null}
@@ -376,6 +430,28 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
       ) : (
         <MissingPdf target={target} pages={loaded.kind === "missing" ? loaded.pages : null} onReloaded={reload} />
       )}
+    </div>
+  );
+}
+
+function pageTextOf(pages: PdfPage[] | null, page: number): string | undefined {
+  return pages?.find((item) => item.page === page)?.text;
+}
+
+// Không mở được trang PDF (file hỏng hoặc lỗi khi đọc): báo lỗi, vẫn cho xem chữ của trang nếu còn.
+function PdfError({ pages, target }: { pages: PdfPage[] | null; target: EvidenceTarget }) {
+  const view = evidenceView(target.cell);
+  return (
+    <div className="ev-pop__missing" role="alert">
+      <p className="ev-pop__note">
+        <span className="ev-pop__error">Chưa mở được trang {view.page} của file PDF.</span> Hãy đóng khung rồi mở lại.
+        {pages ? " Dưới đây là chữ của trang đọc từ file lúc tải lên." : ""}
+      </p>
+      {pages && view.page !== null ? (
+        <div className="ev-pop__text">
+          <PageTextView pages={pages} page={view.page} ranges={view.ranges} lang={target.paper.language_code} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -489,6 +565,7 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
   const dialog = useRef<HTMLDialogElement | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const [sizes, setSizes] = useState<{ width: number; height: number }[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [width, setWidth] = useState(0);
   const [visible, setVisible] = useState<Set<number>>(() => new Set(view.page ? [view.page] : [1]));
@@ -509,7 +586,9 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
   useEffect(() => {
     if (loaded.kind !== "pdf") return;
     let alive = true;
-    void Promise.all(Array.from({ length: loaded.doc.numPages }, (_, i) => pageSize(loaded.doc, i + 1))).then((list) => alive && setSizes(list));
+    void Promise.all(Array.from({ length: loaded.doc.numPages }, (_, i) => pageSize(loaded.doc, i + 1)))
+      .then((list) => alive && setSizes(list))
+      .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
@@ -533,8 +612,16 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
     if (!root || !sizes) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const shown = entries.filter((entry) => entry.isIntersecting).map((entry) => Number((entry.target as HTMLElement).dataset.page));
-        if (shown.length) setVisible((before) => (shown.every((page) => before.has(page)) ? before : new Set([...before, ...shown])));
+        // Chỉ giữ ảnh của các trang đang ở gần phần nhìn thấy; trang đã cuộn xa thì bỏ ảnh để đỡ tốn bộ nhớ.
+        setVisible((before) => {
+          const next = new Set(before);
+          for (const entry of entries) {
+            const page = Number((entry.target as HTMLElement).dataset.page);
+            if (entry.isIntersecting) next.add(page);
+            else next.delete(page);
+          }
+          return next.size === before.size && [...next].every((page) => before.has(page)) ? before : next;
+        });
       },
       { root, rootMargin: "600px 0px" },
     );
@@ -628,7 +715,11 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
       </header>
       {view.note ? <p className={view.label === "needs_review" ? "ev-pop__note ev-pop__note--warn pdf-full__note" : "ev-pop__note pdf-full__note"}>{view.note}</p> : null}
       <div ref={scroller} className="pdf-full__scroll" tabIndex={0} aria-label="Các trang của file PDF">
-        {loaded.kind === "loading" || (loaded.kind === "pdf" && !sizes) ? (
+        {failed ? (
+          <p className="ev-pop__note" role="alert">
+            <span className="ev-pop__error">Chưa mở được file PDF này.</span> Hãy thoát rồi mở lại. Nếu vẫn lỗi, hãy tải lại file PDF của bài.
+          </p>
+        ) : loaded.kind === "loading" || (loaded.kind === "pdf" && !sizes) ? (
           <p className="ev-pop__loading" role="status">
             <span className="spinner" aria-hidden="true" /> Đang mở file PDF…
           </p>
@@ -656,6 +747,7 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
                     scale={scale}
                     ranges={view.ranges}
                     placeholder={size}
+                    expectedText={pageTextOf(loaded.pages, page)}
                     onRendered={page === view.page ? onMark : undefined}
                   />
                 ) : null}

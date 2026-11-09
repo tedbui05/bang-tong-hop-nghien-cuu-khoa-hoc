@@ -100,6 +100,23 @@ export function buildReviewSession(input: SessionInput): ReviewSession {
   };
 }
 
+// Bỏ các ô và thông tin bài của cột không còn trong bảng (ví dụ sinh viên xoá cột trong lúc AI đang đọc bài).
+// Xoá cột là mất hẳn: thêm lại cột thì ô để trống, không được hiện lại dữ liệu cũ.
+export function pruneToColumns(session: ReviewSession, columns: TableColumn[]): ReviewSession {
+  const contentIds = new Set(columns.filter((column) => column.kind === "content").map((column) => column.id));
+  const infoKeys = new Set(columns.map((column) => column.infoKey).filter(Boolean));
+  const keep = (info: PaperInfo): PaperInfo => {
+    const next: PaperInfo = { title: info.title };
+    for (const key of ["authors", "year", "source", "language"] as const) if (infoKeys.has(key) && info[key] !== undefined) next[key] = info[key];
+    return next;
+  };
+  return {
+    ...session,
+    cells: session.cells.filter((cell) => contentIds.has(cell.column)),
+    paper: { ...session.paper, info: keep(session.paper.info), suggested_info: keep(session.paper.suggested_info) },
+  };
+}
+
 // "Duyệt nhanh cả dòng" chỉ có khi mọi ô đều "đã khớp" và không có cảnh báo dẫn nguồn khác (docs/FLOW.md):
 // một ô có nhãn khác, kể cả "không tìm thấy", là phải duyệt từng ô. Vẫn phải bấm nút, không tự duyệt.
 export function canQuickApprove(cells: ReviewCell[]): boolean {

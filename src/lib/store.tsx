@@ -7,7 +7,7 @@ import { logEvent } from "./events";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
-import type { QueueError, ReviewSession } from "./paper-pipeline";
+import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
 import { readPdfInBrowser } from "./pdf-browser";
 import { processPaper } from "./process-paper";
 import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
@@ -317,14 +317,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const editSavedCell = useCallback<Store["editSavedCell"]>(
     (paperId, column, value) => {
-      // Ghi chú là chữ riêng của sinh viên, không phải đề xuất của AI nên không tính vào chỉ số.
-      if (column.kind !== "note") logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
+      // Chỉ đổi nội dung một ô do AI đề xuất mới tính là sửa. Ghi chú, nhãn, ô "chưa điền" sinh viên tự gõ
+      // và ô "do bạn điền" không tính vào chỉ số.
+      const paper = activeTable?.papers.find((item) => item.id === paperId);
+      const cell = paper?.cells.find((item) => item.column === column.id);
+      const fromAi = column.infoKey
+        ? Boolean(paper?.suggested_info[column.infoKey])
+        : column.kind === "content" && (cell?.status === "proposed" || cell?.status === "not_found");
+      if (fromAi) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
       updateActive((table) => ({
         ...table,
         papers: table.papers.map((paper) => (paper.id === paperId ? editCell(paper, column, value) : paper)),
       }));
     },
-    [updateActive],
+    [activeTable, updateActive],
   );
 
   const updatePapers = useCallback(
@@ -528,7 +534,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           patchItem(next.id, { status: "error", error: outcome.error });
           return;
         }
-        const { session } = outcome;
+        // Cột có thể đã bị xoá trong lúc chờ AI: chỉ giữ các cột bảng đang có.
+        const latestTable = tablesRef.current.find((item) => item.id === next.tableId);
+        const session = latestTable ? pruneToColumns(outcome.session, latestTable.columns) : outcome.session;
         // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra.
         logEvent("tai_bai", {
           bai: session.id,
@@ -627,7 +635,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const quickApprove = useCallback<Store["quickApprove"]>(
     () =>
-      updateOpen((current) => ({
+      updateOpen((current) => (!canQuickApprove(current.cells) ? current : {
         ...current,
         cells: current.cells.map((cell) => (cell.review === "pending" ? { ...cell, review: "confirmed", quick: true } : cell)),
       })),
@@ -647,28 +655,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const saveReview = useCallback<Store["saveReview"]>(() => {
     // AI chỉ đề xuất: còn ô chưa duyệt hoặc chưa xác nhận thông tin bài thì không được lưu.
     if (!review || !review.infoConfirmed || review.cells.some((cell) => cell.review === "pending")) return false;
+    const isSample = queue.find((item) => item.id === review.id)?.sample ?? false;
+    const table = tables.find((item) => item.id === review.tableId);
+    const final = table ? pruneToColumns(review, table.columns) : review;
+    // Bài mẫu của bản xem thử không qua AI: không ghi vào chỉ số.
+    const log: typeof logEvent = isSample ? () => undefined : logEvent;
 
-    review.cells.forEach((cell) =>
-      logEvent(cell.review === "edited" ? "o_bi_sua" : "o_giu_nguyen", {
+    final.cells.forEach((cell) =>
+      log(cell.review === "edited" ? "o_bi_sua" : "o_giu_nguyen", {
         cot: cell.column,
         noi: "duyet",
         bai: review.id,
         ...(cell.quick ? { cach: "duyet_nhanh" } : {}),
       }),
     );
-    (Object.keys(review.paper.info) as (keyof PaperInfo)[]).forEach((key) =>
-      logEvent(review.paper.info[key] !== review.paper.suggested_info[key] ? "o_bi_sua" : "o_giu_nguyen", {
+    (Object.keys(final.paper.info) as (keyof PaperInfo)[]).forEach((key) =>
+      log(review.paper.info[key] !== review.paper.suggested_info[key] ? "o_bi_sua" : "o_giu_nguyen", {
         cot: `info-${key}`,
         noi: "duyet",
         bai: review.id,
       }),
     );
-    logEvent("bam_luu_vao_bang", {
+    log("bam_luu_vao_bang", {
       bai: review.paper.id,
       ...(review.paper.filled_by ? { model: review.paper.filled_by.model, du_phong: review.paper.filled_by.fallback ? 1 : 0 } : {}),
     });
 
-    const saved: SavedPaper = { ...review.paper, cells: review.cells };
+    const saved: SavedPaper = { ...final.paper, cells: final.cells };
     setTables((current) =>
       current.map((table) =>
         table.id === review.tableId
@@ -683,7 +696,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setQueue((current) => current.map((item) => (item.id === review.id ? { ...item, status: "saved", session: undefined } : item)));
     setOpenId(next);
     return { next };
-  }, [review, queue]);
+  }, [review, queue, tables]);
 
   const value = useMemo(
     () => ({

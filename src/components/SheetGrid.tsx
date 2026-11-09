@@ -358,6 +358,8 @@ export function SheetGrid(props: Props) {
         className={`sheet-host${wrap ? " sheet-host--wrap" : ""}${props.hasSelection ? "" : " sheet-host--idle"}`}
         style={{ ["--sheet-zoom" as string]: zoom }}
         onMouseDownCapture={(event) => {
+          // Bấm vào nhãn bằng chứng chỉ mở khung xem trước: không tính là chọn ô hay kéo chọn vùng.
+          if ((event.target as HTMLElement).closest(".ev-chip")) return;
           interacted.current = true;
           // Chỉ kéo chọn khi nhấn trong vùng ô; nhấn vào tiêu đề cột hay thanh cuộn thì không.
           if (event.button === 0 && (event.target as HTMLElement).closest(".tabulator-tableholder")) dragging.current = true;
@@ -619,6 +621,8 @@ function evidenceChip(cell: ReviewCell, paperId: string, columnId: string, lates
   chip.type = "button";
   chip.className = `ev-chip ev-chip--grid ev-chip--${view.label}`;
   chip.tabIndex = -1;
+  chip.dataset.paper = paperId;
+  chip.dataset.column = columnId;
   chip.setAttribute("aria-label", `${evidenceSpokenLabel(cell)}. Xem đoạn gốc trong file PDF`);
   chip.setAttribute("aria-haspopup", "dialog");
   const icon = statusIcon(view.label);

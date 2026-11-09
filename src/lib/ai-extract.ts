@@ -42,7 +42,22 @@ export type ExtractError = { code: ExtractErrorCode; title: string; detail: stri
 
 // Model chính và model dự phòng, lấy từ biến môi trường GEMINI_MODEL và GEMINI_FALLBACK_MODEL.
 // primaryTimeoutMs lấy từ GEMINI_TIMEOUT_SECONDS: model chính quá thời gian này thì chuyển sang dự phòng.
-export type AiModels = { primary: string; fallback?: string | null; primaryTimeoutMs?: number; fallbackTimeoutMs?: number };
+export type AiModels = {
+  primary: string;
+  fallback?: string | null;
+  primaryTimeoutMs?: number;
+  fallbackTimeoutMs?: number;
+  // Tổng thời gian tối đa cho cả lần điền một bài (mọi lần gọi cộng lại). Mặc định TOTAL_BUDGET_SECONDS.
+  totalBudgetMs?: number;
+  // Đồng hồ, để test giả được thời gian trôi.
+  now?: () => number;
+};
+
+// Máy chủ chỉ cho một yêu cầu chạy tối đa 300 giây (maxDuration ở route.ts). Chừa 15 giây để gửi kết quả về,
+// nên tổng các lần gọi AI không vượt 285 giây: model dự phòng chỉ được chờ phần thời gian còn lại.
+export const TOTAL_BUDGET_SECONDS = 285;
+// Còn ít hơn chừng này thì không gọi thêm lần nào nữa, báo quá giờ luôn.
+const MIN_CALL_SECONDS = 10;
 
 // Giới hạn thời gian chờ model chính, tính bằng giây. SỐ TẠM, đổi bằng biến môi trường GEMINI_TIMEOUT_SECONDS.
 // 150 giây vì phần lớn bài sinh viên đọc là tiếng Anh và dài: bài tiếng Anh mẫu mất 131 giây với gemini-3.6-flash
@@ -92,8 +107,9 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
       return {
         code,
         title: "Đã hết lượt AI miễn phí hôm nay",
-        detail: "Google cấp lại lượt miễn phí mỗi ngày. Bài của bạn chưa bị mất, hãy bấm Thử lại vào ngày mai.",
-        retry: true,
+        // Thử lại trong ngày không có ích nên không có nút Thử lại.
+        detail: "Google cấp lại lượt miễn phí mỗi ngày. Hãy quay lại tải bài này vào ngày mai.",
+        retry: false,
       };
     case "bad_format":
       return {
@@ -146,12 +162,17 @@ export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callMo
   const responseSchema = buildResponseSchema(request);
 
   // Gọi một model: sai khuôn thì gửi lại một lần cho chính model đó, kèm lý do sai.
+  const now = models.now ?? Date.now;
+  const deadline = now() + (models.totalBudgetMs ?? TOTAL_BUDGET_SECONDS * 1000);
+
   async function runModel(model: string, timeoutMs: number): Promise<ModelRun> {
     let problem: string | undefined;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const left = deadline - now();
+      if (left < MIN_CALL_SECONDS * 1000) return { ok: false, code: "timeout", attempts: attempt - 1, switchable: true };
       const result = await callModel({
         model,
-        timeoutMs,
+        timeoutMs: Math.min(timeoutMs, left),
         systemInstruction: SYSTEM_INSTRUCTION,
         userText: buildUserText(request, problem),
         responseSchema,
@@ -179,7 +200,8 @@ export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callMo
 
   // 2. Model chính quá tải hoặc quá giờ, và có model dự phòng: gọi model dự phòng đúng một lần.
   const fallback = models.fallback?.trim();
-  if (primary.switchable && fallback && fallback !== models.primary) {
+  // Không còn đủ thời gian thì không gọi model dự phòng (và không ghi là đã dùng).
+  if (primary.switchable && fallback && fallback !== models.primary && deadline - now() >= MIN_CALL_SECONDS * 1000) {
     console.info("[ai] model chính quá tải hoặc quá giờ, chuyển sang model dự phòng");
     const second = await runModel(fallback, models.fallbackTimeoutMs ?? FALLBACK_TIMEOUT_SECONDS * 1000);
     const attempts = primary.attempts + second.attempts;

@@ -442,6 +442,19 @@ describe("tìm vị trí câu trích để tô vàng", () => {
     expect(slice(doc, ranges[1])).toBe("with green credit innovate more often");
   });
 
+  it("bỏ số chỉ dẫn nhưng không bỏ con số thật: không tô nhầm câu khác chỉ khác con số", () => {
+    const doc = pages("Pearson raised patents by 12 percent in the first group. Later, Pearson29 raised patents by 15 percent in the second group.");
+    const ranges = locateQuote("Pearson raised patents by 15 percent in the second group", 1, doc)!;
+    expect(slice(doc, ranges[0])).toBe("Pearson29 raised patents by 15 percent in the second group");
+  });
+
+  it("không tô trong phần tài liệu tham khảo đã bị cắt", () => {
+    const doc = pages(filler("a"), "Main text ends here.\nReferences\nSmith J. Green credit and innovation outcomes in China. 2019.");
+    const body = [doc[0], { page: 2, text: "Main text ends here.\n" }];
+    expect(locateQuote("Green credit and innovation outcomes in China", 2, doc, body)).toBeNull();
+    expect(locateQuote("Green credit and innovation outcomes in China", 2, doc)).not.toBeNull();
+  });
+
   it("không có trong trang: trả về null", () => {
     expect(locateQuote("a sentence that does not exist anywhere", 1, pages(filler("a")))).toBeNull();
   });

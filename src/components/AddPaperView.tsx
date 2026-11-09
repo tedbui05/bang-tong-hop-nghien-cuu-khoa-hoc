@@ -254,6 +254,21 @@ function PaperQueue({ items }: { items: QueueItem[] }) {
                   Thử lại
                 </button>
               ) : null}
+              {item.status === "ready" ? (
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  aria-label={`Bỏ ${item.fileName}, không lưu vào bảng`}
+                  onClick={() => {
+                    // Bỏ là mất kết quả AI của bài này: hỏi lại cho chắc.
+                    if (window.confirm(`Bỏ bài “${item.fileName}”? Kết quả AI của bài này sẽ mất, muốn điền lại phải tải bài lên lần nữa.`)) {
+                      removeItem(item.id);
+                    }
+                  }}
+                >
+                  Bỏ bài này
+                </button>
+              ) : null}
               {item.status === "waiting" || item.status === "error" || item.status === "saved" ? (
                 <button
                   type="button"

@@ -16,7 +16,8 @@ export function PageTextView({ pages, page, ranges, lang, visible = true }: Prop
     (value, index, list) => list.indexOf(value) === index,
   );
 
-  // Chỉ cuộn khung chữ, không cuộn cả trang.
+  // Chỉ cuộn khung chữ, không cuộn cả trang. Chỉ cuộn lại khi đổi trang hoặc đổi đoạn tô thật sự.
+  const rangeKey = JSON.stringify(ranges);
   useEffect(() => {
     const container = box.current;
     if (!container || !visible) return;
@@ -27,7 +28,7 @@ export function PageTextView({ pages, page, ranges, lang, visible = true }: Prop
     }
     const top = mark.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
     container.scrollTop = Math.max(0, top - container.clientHeight / 3);
-  }, [page, ranges, visible]);
+  }, [page, rangeKey, visible]);
 
   return (
     <div ref={box} className="page-text">
