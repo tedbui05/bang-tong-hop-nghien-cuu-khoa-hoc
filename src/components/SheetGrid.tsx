@@ -327,13 +327,22 @@ export function SheetGrid(props: Props) {
   // mà ô đã dời đi thì coi là bấm đúp vào ô vừa chọn: mở ô sửa, chặn cú nhấn đó và cú bấm đi kèm.
   useEffect(() => {
     if (!ready) return;
-    const swallow = (name: "click" | "dblclick") => {
+    // Chặn click và bấm đúp đi kèm cú nhấn đã xử lý, đến khi nhả chuột xong (giữ chuột lâu cũng không lọt).
+    const swallowUntilRelease = () => {
       const stop = (event: Event) => {
         event.preventDefault();
         event.stopPropagation();
       };
-      document.addEventListener(name, stop, { capture: true, once: true });
-      setTimeout(() => document.removeEventListener(name, stop, { capture: true }), DOUBLE_CLICK_MS);
+      const remove = () => {
+        document.removeEventListener("click", stop, { capture: true });
+        document.removeEventListener("dblclick", stop, { capture: true });
+      };
+      document.addEventListener("click", stop, { capture: true });
+      document.addEventListener("dblclick", stop, { capture: true });
+      // click và dblclick phát ngay sau mouseup: gỡ ở lượt chạy kế tiếp để chúng vẫn bị chặn.
+      document.addEventListener("mouseup", () => setTimeout(remove, 0), { capture: true, once: true });
+      // Nhả chuột ngoài cửa sổ thì không có mouseup: vẫn gỡ sau một lúc để không chặn mãi.
+      setTimeout(remove, 2000);
     };
     const onPress = (event: MouseEvent) => {
       const press = lastPress.current;
@@ -352,8 +361,7 @@ export function SheetGrid(props: Props) {
       if (!cell || !cell.getColumn().getDefinition().editor) return;
       event.preventDefault();
       event.stopPropagation();
-      swallow("click");
-      swallow("dblclick");
+      swallowUntilRelease();
       revealCell(cell);
       cell.edit(true);
     };

@@ -5,6 +5,7 @@ import { addHighlightRange, withFormat, withRowFill } from "./cell-format";
 import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_ID } from "./columns";
 import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, type Snapshot } from "./cloud-sync";
 import { logEvent, scheduleFlush, setEventSender } from "./events";
+import { isAppSamplePaper } from "./app-sample";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
@@ -485,7 +486,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const fromAi = column.infoKey
         ? Boolean(paper?.suggested_info[column.infoKey])
         : column.kind === "content" && (cell?.status === "proposed" || cell?.status === "not_found");
-      if (fromAi) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
+      if (fromAi && !isAppSamplePaper(paper?.file?.name)) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
       updateActive((table) => ({
         ...table,
         papers: table.papers.map((paper) => (paper.id === paperId ? editCell(paper, column, value) : paper)),
@@ -706,8 +707,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Cột có thể đã bị xoá trong lúc chờ AI: chỉ giữ các cột bảng đang có.
         const latestTable = tablesRef.current.find((item) => item.id === next.tableId);
         const session = latestTable ? pruneToColumns(outcome.session, latestTable.columns) : outcome.session;
-        // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra.
-        logEvent("tai_bai", {
+        // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra. Bài mẫu do app tạo không tính.
+        const log: typeof logEvent = isAppSamplePaper(next.fileName) ? () => undefined : logEvent;
+        log("tai_bai", {
           bai: session.id,
           so_o: session.cells.length,
           so_trang: session.pages?.length ?? 0,
@@ -717,7 +719,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         session.cells
           .filter((cell) => getLabelKey(cell) === "needs_review")
-          .forEach((cell) => logEvent("o_can_kiem_tra", { cot: cell.column, bai: session.id }));
+          .forEach((cell) => log("o_can_kiem_tra", { cot: cell.column, bai: session.id }));
         files.current.delete(next.id);
         patchItem(next.id, { status: "ready", session, error: undefined });
       } catch {
@@ -824,10 +826,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const saveReview = useCallback<Store["saveReview"]>(() => {
     // AI chỉ đề xuất: còn ô chưa duyệt hoặc chưa xác nhận thông tin bài thì không được lưu.
     if (!review || !review.infoConfirmed || review.cells.some((cell) => cell.review === "pending")) return false;
-    const isSample = queue.find((item) => item.id === review.id)?.sample ?? false;
+    const isSample = (queue.find((item) => item.id === review.id)?.sample ?? false) || isAppSamplePaper(review.paper.file?.name);
     const table = tables.find((item) => item.id === review.tableId);
     const final = table ? pruneToColumns(review, table.columns) : review;
-    // Bài mẫu của bản xem thử không qua AI: không ghi vào chỉ số.
+    // Bài mẫu của bản xem thử không qua AI, bài mẫu do app tạo chỉ để thử: không ghi vào chỉ số.
     const log: typeof logEvent = isSample ? () => undefined : logEvent;
 
     final.cells.forEach((cell) =>

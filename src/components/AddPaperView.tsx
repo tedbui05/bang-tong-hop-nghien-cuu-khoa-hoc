@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { waitingMessage } from "@/lib/ai-extract";
+import { SAMPLE_PAPER_NAME, SAMPLE_PAPER_URL, isAppSamplePaper } from "@/lib/app-sample";
 import { hasContentColumn, isOwnColumn } from "@/lib/columns";
 import { MAX_PDF_BYTES, formatMegabytes } from "@/lib/pdf-read";
 import type { PreviewState } from "@/lib/preview-state";
@@ -14,10 +15,6 @@ import { SkeletonLines, StateMessage } from "./StateMessage";
 import { StatusIcon } from "./StatusBadge";
 
 const PRIVACY_NOTE = "Chỉ tải lên bài báo đã công bố. Không tải tài liệu mật hoặc chưa công bố.";
-
-// Bài mẫu do app tạo (scripts/tao-bai-mau.mjs), không phải bài báo thật, để thử app khi chưa có bài riêng.
-const SAMPLE_PAPER_URL = "/bai-mau/bai-mau-do-app-tao.pdf";
-const SAMPLE_PAPER_NAME = "bai-mau-do-app-tao.pdf";
 
 export function AddPaperView({ state }: { state: PreviewState }) {
   // Đổi trạng thái xem thử thì dựng lại form từ đầu.
@@ -52,11 +49,13 @@ function AddPaperContent({ state }: { state: PreviewState }) {
   const table = state === "trong" ? null : activeTable;
   const [dragging, setDragging] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
-  const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">("idle");
+  const [sampleState, setSampleState] = useState<"idle" | "loading" | "missing" | "offline">("idle");
   const folderInput = useRef<HTMLInputElement | null>(null);
   const canAdd = Boolean(table && hydrated && hasContentColumn(table.columns));
 
   const items = queue.filter((item) => !item.sample);
+  // Bài mẫu đang chờ xử lý hoặc chờ duyệt ở bảng này: không cho thêm bản nữa, mỗi bản tốn 1 lượt AI.
+  const sampleQueued = items.some((item) => isAppSamplePaper(item.fileName) && item.tableId === table?.id && item.status !== "saved");
   const working = items.some((item) => ["waiting", "reading", "ai", "checking"].includes(item.status));
 
   // Tải lại trang khi còn bài chưa xử lý xong thì mất file: nhắc trước.
@@ -78,11 +77,14 @@ function AddPaperContent({ state }: { state: PreviewState }) {
     setSampleState("loading");
     try {
       const response = await fetch(SAMPLE_PAPER_URL);
-      if (!response.ok) throw new Error(String(response.status));
+      if (!response.ok) {
+        setSampleState("missing");
+        return;
+      }
       take([new File([await response.blob()], SAMPLE_PAPER_NAME, { type: "application/pdf" })]);
       setSampleState("idle");
     } catch {
-      setSampleState("error");
+      setSampleState("offline");
     }
   }
 
@@ -185,24 +187,26 @@ function AddPaperContent({ state }: { state: PreviewState }) {
           <div className="sample-paper">
             <p className="sample-paper__text">
               Chưa có bài báo trong máy? Thử với bài mẫu do app tạo. Đây không phải bài báo thật: tên người, tạp chí và số
-              liệu đều là hư cấu.
+              liệu đều là hư cấu. AI đọc bài mẫu cũng tính 1 lượt trong ngày.
             </p>
             <div className="sample-paper__actions">
               <button
                 type="button"
                 className="button button--secondary"
-                disabled={!canAdd || sampleState === "loading"}
+                disabled={!canAdd || sampleState === "loading" || sampleQueued}
                 onClick={() => void addSamplePaper()}
               >
-                {sampleState === "loading" ? "Đang lấy bài mẫu…" : "Tải bài mẫu để thử"}
+                {sampleState === "loading" ? "Đang lấy bài mẫu…" : sampleQueued ? "Bài mẫu đã ở hàng chờ" : "Tải bài mẫu để thử"}
               </button>
               <a className="link-button" href={SAMPLE_PAPER_URL} download={SAMPLE_PAPER_NAME}>
                 Tải file về máy để xem
               </a>
             </div>
-            {sampleState === "error" ? (
+            {sampleState === "offline" || sampleState === "missing" ? (
               <p className="field-error" role="alert">
-                Chưa lấy được bài mẫu. Hãy kiểm tra mạng rồi bấm lại.
+                {sampleState === "offline"
+                  ? "Chưa lấy được bài mẫu. Hãy kiểm tra mạng rồi bấm lại."
+                  : "Máy chủ chưa có file bài mẫu. Hãy báo người quản lý app."}
               </p>
             ) : null}
           </div>
