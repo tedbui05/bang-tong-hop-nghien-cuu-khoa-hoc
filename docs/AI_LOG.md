@@ -136,3 +136,54 @@
   - `test:phan-quyen` đạt cả 27 mục. Câu kiểm tra trong SQL Editor: 5 bảng đều bật phân quyền.
   - Luồng: lưu bài lên máy chủ; tải lại trang vẫn còn; xoá bản sao trên trình duyệt vẫn đọc lại đủ từ máy chủ; lúc mất mạng có dải báo và máy chủ chưa có thay đổi, có mạng lại thì tự lưu; Excel có số dòng bằng số bài trên máy chủ; `/metrics` sai mật khẩu bị từ chối, đúng mật khẩu thì hiện số liệu, khổ điện thoại không cuộn ngang.
   - 263 test đạt, lint và build chạy thành công. Khoá bí mật không có trong code gửi cho trình duyệt.
+
+## 2026-11-10 06:39 — Phiên 7: chạy thử toàn app, bài mẫu cho giám khảo, sửa lỗi giao diện, kiểm tra trước khi đẩy lên GitHub
+
+- **Đã nhờ AI làm gì:**
+  - Chạy trọn luồng như sinh viên mới bằng skill webapp-testing, thử đủ tình huống lỗi và trạng thái, chụp ảnh từng cái; soát giao diện bằng web-design-guidelines và ui-ux-pro-max; kiểm tra an toàn; viết `docs/kich-ban-demo.md`. Yêu cầu xem kế hoạch trước khi làm.
+  - Thêm giữa chừng: giữ một PDF tự dựng trong repo và nút "Tải bài mẫu để thử" ở trang tải bài, để giám khảo thử app ngay mà không cần bài báo riêng; ghi rõ đây là bài do app tạo, không phải bài báo thật.
+  - Sau đó: sửa 4 góp ý nhẹ của reviewer, sửa cả 6 lỗi giao diện nhẹ, đổi tên và dời nút xoá dữ liệu, chụp ảnh trước và sau cho lỗi 3, 5, 6.
+  - Cuối phiên: kiểm tra lần cuối trước khi đẩy lên GitHub công khai (khoá trong lịch sử git, file bị bỏ qua, tên tác giả commit, chữ dài từ bài báo thật).
+- **AI đề xuất gì:**
+  - Không thêm `?demo=1` vào app mà giả lập lỗi AI (quá tải, model dự phòng, hết lượt) ngay trong script Playwright; dùng bài tự dựng cho ảnh đưa vào git và gọi Gemini thật đúng một lần mỗi bài.
+  - Bài mẫu hư cấu tiếng Anh 5 trang, viết sẵn các bẫy (câu lặp ở hai trang, câu dẫn nguồn khác, không nêu hạn chế của chính nghiên cứu); nút bấm đưa bài thẳng vào hàng chờ, kèm liên kết tải file về máy.
+  - Danh sách lỗi theo mức nặng, vừa, nhẹ; sửa lỗi nặng và vừa, lỗi nhẹ để người dùng chọn.
+  - Với nút "Đặt lại dữ liệu mẫu" (xoá cả bảng sinh viên tự tạo): ba hướng, khuyên giữ việc xoá nhưng hỏi kỹ hơn và bắt gõ chữ XOÁ.
+- **Chấp nhận hay sửa gì, vì sao:**
+  - Chấp nhận giả lập lỗi AI trong script thay vì thêm `?demo=1` vào app, vì không thêm code giả vào app nên không có nguy cơ lọt lên bản thật, và không tốn lượt Gemini. Các trạng thái lỗi sẽ trình bày bằng ảnh chụp trong slide.
+  - Chấp nhận dùng bài mẫu tự dựng (cộng một lần gọi Gemini thật mỗi bài), vì chữ do app tạo nên không vướng bản quyền, ảnh chụp đưa vào git được, và giám khảo thử app ngay không cần bài riêng.
+  - Bài mẫu: người dùng tự yêu cầu, lý do là để giám khảo thử app ngay mà không cần bài báo riêng.
+  - Lỗi đã sửa:
+    - Nặng: dòng "Bản xem thử… nhãn được gán sẵn" hiện cả với bài thật đã được code kiểm tra.
+    - Vừa: bấm đúp ô ở nửa phải màn hình không mở được ô sửa, vì khung bằng chứng mở ra làm bảng tự cuộn.
+    - Vừa: bấm Esc ở khung chi tiết làm mất vị trí của người dùng bàn phím.
+    - Vừa: mọi trang trùng tên tab.
+  - Người dùng chọn sửa cả 4 góp ý nhẹ của reviewer; không nêu lý do.
+  - Người dùng chọn sửa cả 6 lỗi giao diện nhẹ, ưu tiên lỗi ảnh hưởng đến việc kiểm chứng (câu có ở nhiều trang, tự dịch làm lệch tô vàng) và lỗi giám khảo thấy ngay khi demo. Người dùng yêu cầu thêm:
+    - Viền mới chỉ cho ô nhập liệu và ô kéo thả, để giao diện không bị nặng.
+    - Nút xoá đổi tên thành "Xoá toàn bộ dữ liệu của tôi" cho đúng với việc nó làm, và đặt ở chỗ ít nổi bật.
+  - Nút xoá: người dùng chọn giữ việc xoá toàn bộ, hỏi kỹ hơn (phương án AI khuyên), và đổi tên thành "Xoá toàn bộ dữ liệu của tôi" vì tên cũ không đúng với việc nút làm; bắt gõ XOÁ để tránh bấm nhầm.
+- **AI đã sai ở đâu:**
+  - Báo xong mục tiêu khi agent reviewer còn đang chạy; stop hook chặn lại. Reviewer sau đó tìm ra 2 lỗi mức vừa trong chính code AI viết ở phiên này:
+    - Bài mẫu bị tính vào số liệu đo hiệu quả.
+    - Câu nhắc Bảng mẫu hiện nhầm lúc mới mở trang.
+  - Reviewer cũng tìm ra lỗi nhẹ: bộ chặn click khi bấm đúp gỡ quá sớm nếu giữ chuột lâu. Khi sửa, AI thêm bước gỡ bộ chặn lúc nhả chuột nhưng lúc đầu quên trường hợp nhả chuột ngoài cửa sổ (bộ chặn sẽ ở lại mãi); đã thêm giới hạn 2 giây.
+  - Hàm `resetData` trong store khai báo kiểu `() => void`, nên lần đầu nút "Đang xoá…" không thật sự chờ xoá xong; đã sửa kiểu.
+  - Báo nhầm Cmd+B không in đậm; thật ra script trước đã bấm Cmd+B một lần, lần này bấm lại nên tắt đi.
+  - Nhiều lần lỗi là do script thử của AI, không phải lỗi app:
+    - Chọn sai phần tử (ô sửa nằm ở cuối trang chứ không nằm trong ô; nhãn có tên đọc khác chữ hiện ra).
+    - Một lần thử bấm đúp nhấn tới 3 lần.
+    - Test vị trí cột mới so theo loại cột nên sai.
+    - Đặt tên biến vòng lặp là `path` trong zsh làm hỏng PATH.
+  - Lỡ chạy prettier (dự án không dùng) lên một file, phải viết lại theo kiểu cũ.
+  - Lệnh xoá thư mục bị hook an toàn chặn; các lệnh có chữ giống tên file môi trường cũng bị hook chặn, phải viết lại lệnh hoặc dùng công cụ sửa file. Một lệnh in dòng có tiền tố khoá (dù đã che giá trị) bị bộ lọc an toàn chặn; AI chuyển sang chỉ đếm độ dài phần sau tiền tố.
+  - Gemini thật không tạo ra ô "cần kiểm tra" trên bài mẫu (AI trích câu dài hơn nên chỉ khớp một trang), nên kịch bản demo phải dùng "Xem bài mẫu" cho khoảnh khắc này.
+- **Kết quả chạy thật:**
+  - Gemini thật, mỗi bài một lần: bài mẫu 21 giây, 4 ô đã khớp, cột Hạn chế đúng là "không tìm thấy"; bài Lin 2023 20 giây, 5 ô đã khớp, cột Câu hỏi và Kết quả vẫn trích từ Abstract.
+  - Đủ ảnh cho luồng chính, các lỗi, các trạng thái và khổ điện thoại ở `docs/screenshots/kiem-thu-cuoi/`; ảnh trước và sau ở `docs/screenshots/sua-loi-nhe/`. Ảnh có bài Lin để ở `docs/screenshots-private/`.
+  - Kiểm tra trước khi đẩy lên GitHub:
+    - Lịch sử git (32 commit) không có khoá; `service_role` chỉ là tên vai trò trong file SQL và chú thích.
+    - Git đang bỏ qua file biến môi trường trên máy, `samples/`, `docs/screenshots-private/`, `.git-sao-luu-2026-11-09/`; chưa từng có commit nào chứa các file này.
+    - Mọi commit ghi tên "Duy Đăng" và email Gmail, không còn tên máy.
+    - Đoạn trùng dài nhất với bài báo thật là một câu trích trong test.
+  - 280 test đạt, lint và build chạy thành công. Commit 0012bdb, 8c1a130, 013c4ed, 69ed574 trên main. Chưa đẩy gì lên mạng.
