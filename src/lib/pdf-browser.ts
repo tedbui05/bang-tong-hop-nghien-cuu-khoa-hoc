@@ -25,7 +25,8 @@ export async function readPdfInBrowser(file: File): Promise<PdfReadResult> {
       error: {
         code: "damaged",
         title: "Chưa tải được công cụ đọc PDF",
-        detail: "Hãy kiểm tra kết nối mạng rồi bấm “Đọc bài báo” lần nữa.",
+        detail: "Hãy kiểm tra kết nối mạng rồi bấm Thử lại.",
+        retry: true,
       },
     };
   }

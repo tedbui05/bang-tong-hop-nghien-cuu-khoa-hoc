@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PdfPage } from "./pdf-read";
 import type { AiCell } from "./types";
 import { CITED_SOURCE_WARNING } from "./cited-source";
-import { findRepeatedEdgeLines, normalizeForMatch, verifyCells, verifyQuote } from "./verify-quote";
+import { findRepeatedEdgeLines, locateQuote, normalizeForMatch, verifyCells, verifyQuote } from "./verify-quote";
 
 const pages = (...texts: string[]): PdfPage[] => texts.map((text, i) => ({ page: i + 1, text }));
 
@@ -396,5 +396,64 @@ describe("kiểm tra các ô của một bài", () => {
     const [cell] = verifyCells([{ ...proposed("We surveyed 412 households in three provinces", 1), page: null, ai_page: null }], paper);
     expect(cell.check).toBe("page_corrected");
     expect(cell.page).toBe(2);
+  });
+});
+
+describe("tìm vị trí câu trích để tô vàng", () => {
+  const slice = (texts: PdfPage[], range: { page: number; start: number; end: number }) =>
+    texts.find((page) => page.page === range.page)!.text.slice(range.start, range.end);
+
+  it("câu nằm gọn trong trang: trả về đúng đoạn chữ gốc, kể cả chữ hoa và xuống dòng", () => {
+    const doc = pages(filler("a"), "Intro text. The Treatment group\nimproved by 13% after one year. End.");
+    const ranges = locateQuote("the treatment group improved by 13% after one year", 2, doc)!;
+    expect(ranges).toHaveLength(1);
+    expect(slice(doc, ranges[0])).toBe("The Treatment group\nimproved by 13% after one year");
+  });
+
+  it("gạch nối cuối dòng và chữ dính fi", () => {
+    const doc = pages("We study high-\npoverty areas and ﬁnd strong effects here.");
+    const ranges = locateQuote("high-poverty areas and find strong effects", 1, doc)!;
+    expect(slice(doc, ranges[0])).toBe("high-\npoverty areas and ﬁnd strong effects");
+  });
+
+  it("tiếng Việt dấu tổ hợp và tiếng Trung", () => {
+    const vi = "Kết quả cho thấy doanh nghiệp tăng trưởng".normalize("NFD");
+    const doc = pages(`Mở đầu. ${vi} mạnh.`, "本文数据来源于 作者 2018 年和\n2020 年两轮调查。");
+    expect(slice(doc, locateQuote("Kết quả cho thấy doanh nghiệp tăng trưởng", 1, doc)![0])).toBe(vi);
+    expect(slice(doc, locateQuote("本文数据来源于作者2018年和2020年两轮调查", 2, doc)![0])).toBe("本文数据来源于 作者 2018 年和\n2020 年两轮调查");
+  });
+
+  it("số chỉ dẫn dính vào chữ vẫn tìm được", () => {
+    const doc = pages("Kemp and Pearson29 explained GI from a broad perspective.");
+    const ranges = locateQuote("Kemp and Pearson explained GI from a broad perspective", 1, doc)!;
+    expect(slice(doc, ranges[0])).toBe("Kemp and Pearson29 explained GI from a broad perspective");
+  });
+
+  it("câu vắt qua hai trang, dòng đầu trang chen giữa: tô hai đoạn", () => {
+    const header = "Journal of Tests 12 (2023) 1-20";
+    const doc = pages(
+      `${header}\n${filler("a")}\nThe main finding is that firms`,
+      `${header}\nwith green credit innovate more often.\n${filler("b")}`,
+      `${header}\n${filler("c")}`,
+    );
+    const ranges = locateQuote("The main finding is that firms with green credit innovate more often", 1, doc)!;
+    expect(ranges.map((range) => range.page)).toEqual([1, 2]);
+    expect(slice(doc, ranges[0])).toBe("The main finding is that firms");
+    expect(slice(doc, ranges[1])).toBe("with green credit innovate more often");
+  });
+
+  it("không có trong trang: trả về null", () => {
+    expect(locateQuote("a sentence that does not exist anywhere", 1, pages(filler("a")))).toBeNull();
+  });
+
+  it("verifyCells gắn vị trí cho ô đã khớp, không gắn cho ô cần kiểm tra", () => {
+    const doc = pages(filler("a"), "Results: the treatment group improved by 13% after one year.");
+    const [ok, bad] = verifyCells(
+      [proposed("the treatment group improved by 13% after one year", 2), proposed("an invented sentence that is not in the paper", 2, "han-che")],
+      doc,
+    );
+    expect(ok.quote_ranges).toEqual([{ page: 2, start: 9, end: 59 }]);
+    expect(bad.check).toBe("needs_review");
+    expect(bad.quote_ranges ?? null).toBeNull();
   });
 });

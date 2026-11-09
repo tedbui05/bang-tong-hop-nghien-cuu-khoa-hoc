@@ -3,7 +3,7 @@
 import { citesOtherSource } from "./cited-source";
 import type { PdfPage } from "./pdf-read";
 import { stripReferences } from "./strip-references";
-import type { AiCell, CheckResult } from "./types";
+import type { AiCell, CheckResult, TextRange } from "./types";
 
 // ---------------------------------------------------------------------------
 // Phần 1. Các con số tạm
@@ -130,19 +130,31 @@ export function findRepeatedEdgeLines(pages: PdfPage[]): Set<string> {
   return repeated;
 }
 
-// Bỏ các dòng đầu trang, chân trang nằm sát mép trang: ở cuối trang (side "end") hoặc đầu trang (side "start").
-// Chỉ bỏ những dòng liền nhau tính từ mép; gặp dòng nội dung đầu tiên thì dừng.
-function trimEdge(text: string, edgeKeys: Set<string>, side: "start" | "end"): string {
+// Vị trí ranh giới sau khi bỏ các dòng đầu trang, chân trang nằm sát mép trang: ở cuối trang (side "end")
+// hoặc đầu trang (side "start"). Chỉ bỏ những dòng liền nhau tính từ mép; gặp dòng nội dung đầu tiên thì dừng.
+// side "start": chữ của trang bắt đầu từ vị trí trả về. side "end": chữ của trang kết thúc ở vị trí trả về.
+function edgeBoundary(text: string, edgeKeys: Set<string>, side: "start" | "end"): number {
   const lines = text.split("\n");
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length + 1;
+  }
   const isEdge = (line: string) => !line.trim() || edgeKeys.has(edgeKey(line));
   if (side === "start") {
     let from = 0;
     while (from < lines.length && from < EDGE_LINES * 2 && isEdge(lines[from])) from++;
-    return lines.slice(from).join("\n");
+    return from < lines.length ? starts[from] : text.length;
   }
   let to = lines.length;
   while (to > 0 && lines.length - to < EDGE_LINES * 2 && isEdge(lines[to - 1])) to--;
-  return lines.slice(0, to).join("\n");
+  return to === 0 ? 0 : starts[to - 1] + lines[to - 1].length;
+}
+
+function trimEdge(text: string, edgeKeys: Set<string>, side: "start" | "end"): string {
+  const boundary = edgeBoundary(text, edgeKeys, side);
+  return side === "start" ? text.slice(boundary) : text.slice(0, boundary);
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +246,126 @@ export function verifyCells(cells: AiCell[], pages: PdfPage[]): AiCell[] {
     try {
       if (!bodyPages) throw new Error("không đọc được chữ của bài");
       const result = verifyQuote(cell.quote_original ?? "", ai_page, bodyPages);
-      return { ...cell, ai_page, page: result.page, check: result.check, review_reason: result.review_reason, cites_other_source };
+      // Vị trí câu trích để tô vàng khi xem bằng chứng. Chỉ để hiển thị, không đổi kết quả kiểm tra.
+      // Ô "cần kiểm tra" không tô, vì chưa biết câu nằm ở đâu.
+      const quote_ranges =
+        result.check !== "needs_review" && result.page !== null ? safeLocate(cell.quote_original ?? "", result.page, pages) : null;
+      return {
+        ...cell,
+        ai_page,
+        page: result.page,
+        check: result.check,
+        review_reason: result.review_reason,
+        cites_other_source,
+        quote_ranges,
+      };
     } catch {
       // 5b. Kiểm tra bị lỗi giữa chừng: cần kiểm tra, không bao giờ coi là đạt.
       return { ...cell, ai_page, check: "needs_review", review_reason: "check_failed", cites_other_source };
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Phần 6. Tìm vị trí câu trích trong chữ gốc của trang, để tô vàng
+// Chỉ dùng để hiển thị, SAU KHI Phần 4 đã cho kết quả. Không bao giờ đổi nhãn kiểm tra.
+// Cách làm: chỉ giữ chữ cái và chữ số (bỏ dấu, dấu câu, khoảng trắng, gạch nối), nhớ vị trí của từng ký tự
+// trong chữ gốc, rồi tìm câu trích trong dãy đó. Cách so này lỏng hơn Phần 2, nhưng câu đã được Phần 4
+// xác nhận là có ở trang này, nên chỉ cần tìm ra chỗ của nó.
+// ---------------------------------------------------------------------------
+
+type Skeleton = { chars: string[]; at: { page: number; index: number }[] };
+
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+const DIGIT = /\p{N}/u;
+
+function addSkeleton(target: Skeleton, text: string, page: number, from: number, to: number, keepDigits: boolean) {
+  let index = from;
+  while (index < to) {
+    const codePoint = text.codePointAt(index)!;
+    const char = String.fromCodePoint(codePoint);
+    // NFKD tách dấu ra khỏi chữ ("ế" thành "e" + dấu), "ﬁ" thành "fi", số toàn khổ thành số thường.
+    for (const part of char.normalize("NFKD").toLowerCase()) {
+      if (!LETTER_OR_DIGIT.test(part) || (!keepDigits && DIGIT.test(part))) continue;
+      target.chars.push(part);
+      target.at.push({ page, index });
+    }
+    index += char.length;
+  }
+}
+
+function quoteSkeleton(quote: string, keepDigits: boolean): string[] {
+  const skeleton: Skeleton = { chars: [], at: [] };
+  addSkeleton(skeleton, quote, 0, 0, quote.length, keepDigits);
+  return skeleton.chars;
+}
+
+function findIn(haystack: string[], needle: string[]): number {
+  if (!needle.length || needle.length > haystack.length) return -1;
+  // Ghép thành chuỗi với ký tự ngăn cách để dùng indexOf, nhanh hơn so từng ký tự.
+  const sep = "\u0000";
+  const joined = sep + haystack.join(sep) + sep;
+  const target = sep + needle.join(sep) + sep;
+  const at = joined.indexOf(target);
+  if (at === -1) return -1;
+  // Đếm số ký tự ngăn cách đứng trước để đổi về vị trí trong mảng.
+  let count = 0;
+  for (let i = 0; i < at; i++) if (joined[i] === sep) count++;
+  return count;
+}
+
+function toRanges(skeleton: Skeleton, start: number, length: number, pages: PdfPage[]): TextRange[] {
+  const ranges: TextRange[] = [];
+  for (let i = start; i < start + length; i++) {
+    const { page, index } = skeleton.at[i];
+    const text = pages.find((item) => item.page === page)!.text;
+    const end = index + String.fromCodePoint(text.codePointAt(index)!).length;
+    const last = ranges[ranges.length - 1];
+    if (last && last.page === page) last.end = end;
+    else ranges.push({ page, start: index, end });
+  }
+  return ranges;
+}
+
+// Trả về các đoạn cần tô (một đoạn, hoặc hai đoạn nếu câu vắt qua hai trang). Không tìm được thì trả về null.
+export function locateQuote(quote: string, page: number, pages: PdfPage[]): TextRange[] | null {
+  const index = pages.findIndex((item) => item.page === page);
+  if (index === -1) return null;
+  const current = pages[index];
+  const next = pages[index + 1];
+  const edgeKeys = next ? findRepeatedEdgeLines(pages) : new Set<string>();
+
+  // Thử giữ chữ số trước; không được thì bỏ chữ số, để số chỉ dẫn dính vào chữ ("innovation.12") không cản.
+  for (const keepDigits of [true, false]) {
+    const needle = quoteSkeleton(quote, keepDigits);
+    if (needle.length === 0) return null;
+
+    // 6a. Câu nằm gọn trong trang.
+    const own: Skeleton = { chars: [], at: [] };
+    addSkeleton(own, current.text, current.page, 0, current.text.length, keepDigits);
+    const found = findIn(own.chars, needle);
+    if (found !== -1) return toRanges(own, found, needle.length, pages);
+
+    // 6b. Câu vắt sang trang sau: ghép cuối trang này với đầu trang sau, bỏ dòng đầu trang, chân trang chen giữa.
+    if (next) {
+      for (const trim of [false, true]) {
+        const joined: Skeleton = { chars: [], at: [] };
+        const end = trim ? edgeBoundary(current.text, edgeKeys, "end") : current.text.length;
+        const start = trim ? edgeBoundary(next.text, edgeKeys, "start") : 0;
+        addSkeleton(joined, current.text, current.page, 0, end, keepDigits);
+        addSkeleton(joined, next.text, next.page, start, next.text.length, keepDigits);
+        const at = findIn(joined.chars, needle);
+        if (at !== -1) return toRanges(joined, at, needle.length, pages);
+      }
+    }
+  }
+  return null;
+}
+
+function safeLocate(quote: string, page: number, pages: PdfPage[]): TextRange[] | null {
+  try {
+    return locateQuote(quote, page, pages);
+  } catch {
+    return null;
+  }
 }

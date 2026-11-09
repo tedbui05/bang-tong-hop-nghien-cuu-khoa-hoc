@@ -5,7 +5,8 @@ import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
 import { TAG_COLORS, type TagColorKey } from "@/lib/palette";
 import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type CellTarget } from "@/lib/store";
-import { getLabelKey, getReviewReason, isCellEdited, type Highlight, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
+import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
+import { filledByText, getLabelKey, getReviewReason, isCellEdited, type Highlight, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
 import { HighlightText, useTextSelection } from "./HighlightText";
 import { MarkdownView } from "./MarkdownView";
 import { StatusIcon } from "./StatusBadge";
@@ -85,7 +86,7 @@ function StatusStrip({ label, children }: { label: LabelKey; children: ReactNode
 function statusText(cell: ReviewCell, label: LabelKey): string {
   if (label === "verified") return `Câu trích có đúng ở trang ${cell.page} của file PDF.`;
   if (label === "page_corrected") return `AI ghi trang ${cell.ai_page}, câu này nằm ở trang ${cell.page} nên app đã sửa lại.`;
-  if (label === "needs_review") return `${getReviewReason(cell)} AI ghi trang ${cell.page}.`;
+  if (label === "needs_review") return `${getReviewReason(cell)} AI ghi trang ${cell.ai_page ?? cell.page}.`;
   if (label === "manual") return "Nội dung do bạn tự điền, không có câu trích.";
   return "Bài không có thông tin cho cột này nên không có câu trích.";
 }
@@ -194,6 +195,21 @@ function EvidenceContent({ selection }: { selection: EvidenceSelection }) {
   return (
     <div ref={box} className="evidence-panel__stack">
       <StatusStrip label={label}>{statusText(cell, label)}</StatusStrip>
+
+      {cell.cites_other_source ? (
+        <p className="cite-warning" role="note">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M8 2.5l6 11H2z M8 6.5v3.2 M8 11.8v.1" />
+          </svg>
+          <span>{CITED_SOURCE_WARNING}.</span>
+        </p>
+      ) : null}
+
+      {paper.filled_by && cell.status !== "manual" ? (
+        <p className={paper.filled_by.fallback ? "evidence-panel__note filled-by--fallback" : "evidence-panel__note"}>
+          {filledByText(paper.filled_by)}
+        </p>
+      ) : null}
 
       <Card title="Nội dung đầy đủ" aside={action("value")}>
         <HighlightText

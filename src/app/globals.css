@@ -90,6 +90,7 @@
 
   --shadow-sm: 0 6px 18px rgb(15 23 42 / 0.12);
   --shadow-md: 0 8px 24px rgb(15 23 42 / 0.18);
+  --backdrop: rgb(15 23 42 / 0.4);
 
   --font-body: var(--font-ui), "Segoe UI", system-ui, sans-serif;
   --font-paper: var(--font-source), "Noto Serif CJK SC", "Songti SC", "SimSun", Georgia, serif;
@@ -2322,4 +2323,434 @@ textarea {
     left: 8px;
     width: auto;
   }
+}
+
+/* ------------------------------------------------------------------
+   Hàng chờ ở trang thêm bài
+   ------------------------------------------------------------------ */
+.dropzone--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dropzone-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.link-button:disabled {
+  color: var(--ink-soft);
+  cursor: not-allowed;
+}
+
+.notice--soft {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: var(--soft);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.queue {
+  margin-top: 28px;
+}
+
+.queue__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.queue__head h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.queue__summary {
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.queue-item--ready {
+  border-color: var(--accent);
+}
+
+.queue-item--error {
+  border-color: var(--line-strong);
+}
+
+.queue-item--saved {
+  background: transparent;
+}
+
+.queue-item__main {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.queue-item__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.queue-item__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.queue-item__status--ready {
+  display: block;
+  color: var(--ink);
+}
+
+.queue-item__time {
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-item__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.queue-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.queue-count--verified {
+  color: var(--ok-ink);
+}
+
+.queue-count--page_corrected {
+  color: var(--fix-ink);
+}
+
+.queue-count--needs_review {
+  color: var(--warn-ink);
+}
+
+.queue-count--not_found {
+  color: var(--none-ink);
+}
+
+.queue-item__error {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.queue-item__error-title {
+  color: var(--error-ink);
+  font-weight: 600;
+}
+
+.queue-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Trang duyệt: danh sách thẻ bên trái, chữ của trang bên phải
+   ------------------------------------------------------------------ */
+.review-bar__inner--wide {
+  max-width: 1240px;
+}
+
+.review-page .paper-heading {
+  max-width: 760px;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.review-card--selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.review-card__page-button {
+  display: none;
+  margin-top: 6px;
+}
+
+.filled-by--fallback {
+  color: var(--warn-ink);
+  font-weight: 500;
+}
+
+.cite-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 68ch;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  color: var(--warn-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.cite-warning svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.review-question {
+  max-width: 68ch;
+  margin-top: 10px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.review-question__lead {
+  color: var(--ink-soft);
+}
+
+.quick-approve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 14px 18px;
+  background: var(--accent-soft);
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.quick-approve p {
+  flex: 1 1 260px;
+}
+
+.review-side {
+  position: sticky;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 80px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.review-side__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.review-side__eyebrow {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.review-side__head h2 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.review-side__close {
+  display: none;
+}
+
+.review-side__note {
+  margin: 10px 16px 0;
+  padding: 8px 12px;
+  background: var(--soft);
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.review-side__note--warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-weight: 500;
+}
+
+.review-side__empty {
+  padding: 16px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.page-text {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 16px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.page-text__page + .page-text__page {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.page-text__number {
+  position: sticky;
+  top: 0;
+  padding: 8px 0 4px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.page-text__body {
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.page-text__body mark {
+  padding: 1px 0;
+  background: var(--highlight);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--flag);
+  border-radius: 2px;
+}
+
+@media (max-width: 900px) {
+  .review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-card__page-button {
+    display: inline-block;
+  }
+
+  .review-side {
+    display: none;
+  }
+
+  .review-side--open {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    display: flex;
+    max-height: 75vh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-md);
+  }
+
+  .review-side__close {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 900px) and (prefers-reduced-motion: no-preference) {
+  .review-side--open {
+    animation: sheet-rise 0.2s ease-out;
+  }
+}
+
+/* Hộp hỏi lại khi rời trang */
+.confirm-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 22px 24px 18px;
+  background: var(--surface);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+}
+
+.confirm-dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.confirm-dialog h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.confirm-dialog p {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
 }

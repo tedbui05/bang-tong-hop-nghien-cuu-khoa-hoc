@@ -18,6 +18,22 @@ const SUGGESTED_CONTENT: { id: string; name: string; description: string }[] = [
   { id: "han-che", name: "Hạn chế", description: "Những hạn chế mà chính tác giả nêu trong bài" },
 ];
 
+// Câu hỏi gợi ý kiểm tra, hiện khi duyệt ô. Nhắc đúng chỗ AI hay nhầm ở từng cột.
+// Gắn theo mã cột nên cột gợi ý bị đổi tên vẫn giữ câu hỏi. Cột do sinh viên tự thêm dùng câu chung.
+const REVIEW_QUESTIONS: Record<string, string> = {
+  "cau-hoi": "Đây là câu hỏi của chính bài này, hay chỉ là ý trong phần tóm tắt hoặc phần tổng quan?",
+  "phuong-phap": "Đây là phương pháp bài này dùng, hay phương pháp của nghiên cứu khác mà bài nhắc tới?",
+  mau: "Con số này là mẫu thật sự được phân tích, hay là tổng thể ban đầu hoặc mẫu của nghiên cứu khác?",
+  "ket-qua": "Đây là kết quả của bài này, hay của nghiên cứu khác mà bài dẫn lại?",
+  "han-che": "Đây là hạn chế của chính nghiên cứu, hay của đối tượng được nghiên cứu?",
+};
+
+export const GENERIC_REVIEW_QUESTION = "Câu trích này có thật sự trả lời điều cột hỏi không?";
+
+export function reviewQuestion(columnId: string): string {
+  return REVIEW_QUESTIONS[columnId] ?? GENERIC_REVIEW_QUESTION;
+}
+
 function infoColumn({ key, name, description }: (typeof INFO_COLUMNS)[number]): TableColumn {
   return { id: `info-${key}`, name, description, kind: "info", infoKey: key, visible: true };
 }

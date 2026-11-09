@@ -6,11 +6,15 @@ import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_I
 import { logEvent } from "./events";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import type { FillKey, TagColorKey } from "./palette";
-import type { PdfPage } from "./pdf-read";
-import { getLabelKey, type CellFormat, type FilledBy, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
+import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
+import type { QueueError, ReviewSession } from "./paper-pipeline";
+import { readPdfInBrowser } from "./pdf-browser";
+import { processPaper } from "./process-paper";
+import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
 // Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
-// Khi có cơ sở dữ liệu thì thay phần đọc và ghi này. Bài đang duyệt dở không được giữ.
+// Khi có cơ sở dữ liệu thì thay phần đọc và ghi này. Bài AI đã điền nhưng chưa lưu vào bảng (kể cả phần đã duyệt dở)
+// được giữ riêng trong IndexedDB (paper-files.ts), vì mất là tốn thêm một lượt AI.
 const STORAGE_KEY = "tcb-bang-v1";
 
 function readSaved(): { tables: SheetTable[]; activeId: string | null } | null {
@@ -29,15 +33,28 @@ function readSaved(): { tables: SheetTable[]; activeId: string | null } | null {
 
 export type CellTarget = { paperId: string; columnId: string };
 
-export type ReviewSession = {
+export type { ReviewSession } from "./paper-pipeline";
+
+// Một bài trong hàng chờ ở trang tải bài. Mỗi lần chỉ xử lý một bài, theo thứ tự.
+// waiting: chờ đến lượt. reading: đọc chữ của PDF. ai: chờ AI. checking: kiểm tra câu trích.
+// ready: chờ sinh viên duyệt. saved: đã lưu vào bảng. error: có lỗi, xem error.
+export type QueueStatus = "waiting" | "reading" | "ai" | "checking" | "ready" | "saved" | "error";
+
+export type QueueItem = {
+  id: string;
   tableId: string;
-  paper: Paper;
-  fileName: string | null;
-  // Chữ của từng trang trong file vừa tải, để sau này kiểm tra câu trích. Không lưu vào localStorage.
-  pages: PdfPage[] | null;
-  cells: ReviewCell[];
-  infoConfirmed: boolean;
+  fileName: string;
+  size: number;
+  status: QueueStatus;
+  // Lúc bắt đầu chờ AI, để đổi dòng chữ sau 60 giây.
+  aiStartedAt?: number;
+  error?: QueueError;
+  session?: ReviewSession;
+  // Bài mẫu của bản xem thử: không giữ trong IndexedDB.
+  sample?: boolean;
 };
+
+const BUSY: QueueStatus[] = ["reading", "ai", "checking"];
 
 type ColumnChange = Partial<Pick<TableColumn, "name" | "description" | "visible" | "width">>;
 
@@ -52,14 +69,26 @@ type Store = {
   deleteColumn: (id: string) => void;
   moveColumn: (id: string, offset: number) => void;
   reorderColumns: (ids: string[]) => void;
+  // Bài đang mở ở trang duyệt.
   review: ReviewSession | null;
   savedTitle: string | null;
-  // filledBy: model AI đã điền bài. Bản xem thử chưa nối AI nên chưa truyền vào.
-  startReview: (fileName: string | null, pages?: PdfPage[] | null, filledBy?: FilledBy) => void;
+  queue: QueueItem[];
+  // Đã đọc xong các bài chờ duyệt giữ trong IndexedDB chưa.
+  queueLoaded: boolean;
+  // Thêm file vào hàng chờ. Trả về tên các file bị bỏ qua vì không phải PDF.
+  addFiles: (files: File[]) => string[];
+  retryItem: (id: string) => void;
+  removeItem: (id: string) => void;
+  openReview: (id: string) => void;
+  // Mở bài mẫu của bản xem thử (không gọi AI).
+  startSampleReview: () => void;
   updateCell: (index: number, change: Partial<Pick<ReviewCell, "value_vi" | "review">>) => void;
+  // "Duyệt nhanh cả dòng": xác nhận mọi ô chưa duyệt. Chỉ gọi khi canQuickApprove đúng.
+  quickApprove: () => void;
   updateInfo: (info: PaperInfo) => void;
   setInfoConfirmed: (confirmed: boolean) => void;
-  saveReview: () => boolean;
+  // Trả về mã bài kế tiếp đang chờ duyệt (nếu có), hoặc false khi chưa lưu được.
+  saveReview: () => { next: string | null } | false;
   // Sửa một ô đã lưu ngay trong bảng tổng hợp.
   editSavedCell: (paperId: string, column: TableColumn, value: string) => void;
   // Các thao tác dưới đây không đổi nội dung ô nên không ghi là "ô bị sửa".
@@ -147,11 +176,22 @@ function sortCells(cells: ReviewCell[], columns: TableColumn[]): ReviewCell[] {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [tables, setTables] = useState<SheetTable[]>([sampleTable]);
   const [activeId, setActiveId] = useState<string | null>(sampleTable.id);
-  const [review, setReview] = useState<ReviewSession | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [queueLoaded, setQueueLoaded] = useState(false);
+  // File gốc của các bài chưa xử lý xong. Không đưa vào state vì không cần vẽ lại.
+  const files = useRef(new Map<string, File>());
+  const busy = useRef(false);
+  const tablesRef = useRef(tables);
   const [savedTitle, setSavedTitle] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const skipReset = useRef(false);
+
+  // Bước xử lý hàng chờ cần bảng mới nhất (cột có thể đổi trong lúc chờ).
+  useEffect(() => {
+    tablesRef.current = tables;
+  }, [tables]);
 
   // Máy chủ không có dữ liệu trình duyệt nên chỉ đọc được sau khi trang đã hiện.
   useEffect(() => {
@@ -185,7 +225,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       // Trình duyệt chặn bộ nhớ thì tải lại cũng về dữ liệu mẫu.
     }
-    window.location.reload();
+    // Xoá cả file PDF và bài chờ duyệt đã giữ trong trình duyệt.
+    void clearPaperFiles().finally(() => window.location.reload());
   }, []);
 
   const activeTable = useMemo(() => tables.find((table) => table.id === activeId) ?? null, [tables, activeId]);
@@ -196,6 +237,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [activeId],
   );
+
+  // Đổi mọi bài chờ duyệt (ví dụ khi xoá hoặc đổi thứ tự cột).
+  const mapSessions = useCallback((change: (session: ReviewSession) => ReviewSession) => {
+    setQueue((current) => current.map((item) => (item.session ? { ...item, session: change(item.session) } : item)));
+  }, []);
 
   const setActiveTable = useCallback((id: string) => {
     setSavedTitle(null);
@@ -234,29 +280,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         columns: table.columns.filter((item) => item.id !== id),
         papers: table.papers.map((paper) => withoutColumn(paper, column)),
       }));
-      setReview(
-        (current) =>
-          current &&
-          (current.tableId !== activeId
-            ? current
-            : {
-                ...current,
-                cells: current.cells.filter((cell) => cell.column !== id),
-                paper: { ...current.paper, ...infoWithout(current.paper, column) },
-              }),
+      mapSessions((current) =>
+        current.tableId !== activeId
+          ? current
+          : {
+              ...current,
+              cells: current.cells.filter((cell) => cell.column !== id),
+              paper: { ...current.paper, ...infoWithout(current.paper, column) },
+            },
       );
     },
-    [activeId, activeTable, updateActive],
+    [activeId, activeTable, updateActive, mapSessions],
   );
 
   const applyOrder = useCallback(
     (columns: TableColumn[]) => {
       updateActive((table) => ({ ...table, columns }));
-      setReview((current) =>
-        current && current.tableId === activeId ? { ...current, cells: sortCells(current.cells, columns) } : current,
-      );
+      mapSessions((current) => (current.tableId === activeId ? { ...current, cells: sortCells(current.cells, columns) } : current));
     },
-    [activeId, updateActive],
+    [activeId, updateActive, mapSessions],
   );
 
   const moveColumn = useCallback<Store["moveColumn"]>(
@@ -378,87 +420,253 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [updateActive],
   );
 
-  // Bản xem thử chưa có AI: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
-  const startReview = useCallback(
-    (fileName: string | null, pages: PdfPage[] | null = null, filledBy?: FilledBy) => {
-      // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
-      if (!activeTable || !hydrated) return;
-      const { columns } = activeTable;
-      const contentIds = columns.filter((column) => column.kind === "content").map((column) => column.id);
-      const cells = sortCells(
-        toReviewCells(reviewCells).filter((cell) => contentIds.includes(cell.column)),
-        columns,
+  const patchItem = useCallback((id: string, change: Partial<QueueItem>) => {
+    setQueue((current) => current.map((item) => (item.id === id ? { ...item, ...change } : item)));
+  }, []);
+
+  // Đọc lại các bài AI đã điền nhưng chưa lưu vào bảng, kèm chữ của trang.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const saved = ((await loadAllPending()) ?? []) as QueueItem[];
+      const items = await Promise.all(
+        saved
+          .filter((item) => item?.id && item.session && item.status === "ready")
+          .map(async (item) => ({ ...item, session: { ...item.session!, pages: await loadPages(item.id) } })),
       );
-      const keepInfo = (info: PaperInfo): PaperInfo => {
-        const next: PaperInfo = { title: info.title };
-        columns.forEach((column) => {
-          if (column.infoKey && column.infoKey !== "title") next[column.infoKey] = info[column.infoKey];
-        });
-        return next;
-      };
-      if (fileName) {
-        logEvent("tai_bai", {
-          so_o: cells.length,
-          so_trang: pages?.length ?? 0,
-          ...(filledBy ? { model: filledBy.model, du_phong: filledBy.fallback ? 1 : 0 } : {}),
-        });
-        cells
-          .filter((cell) => getLabelKey(cell) === "needs_review")
-          .forEach((cell) => logEvent("o_can_kiem_tra", { cot: cell.column }));
+      if (cancelled) return;
+      setQueue((current) => [...items.filter((item) => !current.some((other) => other.id === item.id)), ...current]);
+      setQueueLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Giữ bài chờ duyệt (kể cả phần đã duyệt dở) trong IndexedDB. Chữ của trang đã giữ riêng nên không ghi lại.
+  useEffect(() => {
+    if (!queueLoaded) return;
+    const timer = setTimeout(() => {
+      for (const item of queue) {
+        if (item.status === "ready" && item.session && !item.sample) {
+          void savePending(item.id, { ...item, session: { ...item.session, pages: null } });
+        }
       }
-      setSavedTitle(null);
-      setReview({
-        tableId: activeTable.id,
-        // Mỗi lần đọc là một bài mới có mã riêng. Dùng chung mã thì bài sau ghi đè bài trước,
-        // vì bản xem thử luôn trả về cùng một bài mẫu.
-        paper: {
-          ...reviewPaper,
-          id: `bai-${crypto.randomUUID()}`,
-          info: keepInfo(reviewPaper.info),
-          suggested_info: keepInfo(reviewPaper.suggested_info),
-          ...(filledBy ? { filled_by: filledBy } : {}),
-        },
-        fileName,
-        pages,
-        cells,
-        infoConfirmed: false,
-      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [queue, queueLoaded]);
+
+  const addFiles = useCallback<Store["addFiles"]>(
+    (list) => {
+      if (!activeTable || !hydrated) return list.map((file) => file.name);
+      const skipped: string[] = [];
+      const added: QueueItem[] = [];
+      for (const file of list) {
+        // Lọc theo đuôi hoặc loại file. File đổi đuôi thành .pdf sẽ bị phát hiện khi đọc (xem 1024 byte đầu).
+        if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+          skipped.push(file.name);
+          continue;
+        }
+        const id = `bai-${crypto.randomUUID()}`;
+        files.current.set(id, file);
+        added.push({ id, tableId: activeTable.id, fileName: file.name, size: file.size, status: "waiting" });
+      }
+      if (added.length) {
+        setSavedTitle(null);
+        setQueue((current) => [...current, ...added]);
+      }
+      return skipped;
     },
     [activeTable, hydrated],
   );
 
-  const updateCell = useCallback<Store["updateCell"]>((index, change) => {
-    setReview(
-      (current) =>
-        current && {
-          ...current,
-          cells: current.cells.map((cell, i) => (i === index ? { ...cell, ...change } : cell)),
-        },
+  // Xử lý lần lượt từng bài: chỉ khi không có bài nào đang xử lý mới lấy bài chờ kế tiếp.
+  useEffect(() => {
+    if (!hydrated || busy.current || queue.some((item) => BUSY.includes(item.status))) return;
+    const next = queue.find((item) => item.status === "waiting");
+    if (!next) return;
+    busy.current = true;
+    void (async () => {
+      const file = files.current.get(next.id);
+      const table = tablesRef.current.find((item) => item.id === next.tableId);
+      try {
+        if (!file || !table) {
+          patchItem(next.id, {
+            status: "error",
+            error: {
+              title: !file ? "File không còn trong trang này" : "Không còn bảng để điền",
+              detail: !file ? "Trang đã được tải lại nên app không còn giữ file. Hãy chọn lại file." : "Bảng đã bị xoá. Hãy chọn bảng khác rồi tải lại bài.",
+              retry: false,
+            },
+          });
+          return;
+        }
+        const outcome = await processPaper(
+          {
+            id: next.id,
+            tableId: table.id,
+            columns: table.columns,
+            file,
+            onStage: (stage) => patchItem(next.id, stage === "ai" ? { status: "ai", aiStartedAt: Date.now() } : { status: stage }),
+          },
+          {
+            readPdf: readPdfInBrowser,
+            callApi: async (body) => {
+              const response = await fetch("/api/dien-bang", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+              return response.json().catch(() => null);
+            },
+            hash: fileHash,
+            savePdf,
+            savePages,
+          },
+        );
+        if (!outcome.ok) {
+          patchItem(next.id, { status: "error", error: outcome.error });
+          return;
+        }
+        const { session } = outcome;
+        // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra.
+        logEvent("tai_bai", {
+          bai: session.id,
+          so_o: session.cells.length,
+          so_trang: session.pages?.length ?? 0,
+          model: session.paper.filled_by?.model ?? "",
+          du_phong: session.paper.filled_by?.fallback ? 1 : 0,
+          giu_pdf: outcome.pdfSaved ? 1 : 0,
+        });
+        session.cells
+          .filter((cell) => getLabelKey(cell) === "needs_review")
+          .forEach((cell) => logEvent("o_can_kiem_tra", { cot: cell.column, bai: session.id }));
+        files.current.delete(next.id);
+        patchItem(next.id, { status: "ready", session, error: undefined });
+      } catch {
+        patchItem(next.id, { status: "error", error: { title: "Có lỗi khi xử lý bài này", detail: "Hãy bấm Thử lại.", retry: true } });
+      } finally {
+        busy.current = false;
+        // Kích để effect chạy lại và lấy bài kế tiếp.
+        setQueue((current) => [...current]);
+      }
+    })();
+  }, [queue, hydrated, patchItem]);
+
+  const retryItem = useCallback<Store["retryItem"]>(
+    (id) => patchItem(id, { status: "waiting", error: undefined, aiStartedAt: undefined }),
+    [patchItem],
+  );
+
+  const removeItem = useCallback<Store["removeItem"]>((id) => {
+    files.current.delete(id);
+    setQueue((current) => {
+      const item = current.find((other) => other.id === id);
+      // Bài đã lưu vào bảng vẫn cần file PDF để xem bằng chứng, chỉ bỏ khỏi danh sách.
+      if (item && item.status !== "saved") void deletePaperFiles(id);
+      return current.filter((other) => other.id !== id);
+    });
+    setOpenId((current) => (current === id ? null : current));
+  }, []);
+
+  const openReview = useCallback<Store["openReview"]>((id) => {
+    setSavedTitle(null);
+    setOpenId(id);
+  }, []);
+
+  // Bài mẫu của bản xem thử: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
+  const startSampleReview = useCallback(() => {
+    // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
+    if (!activeTable || !hydrated) return;
+    const { columns } = activeTable;
+    const contentIds = columns.filter((column) => column.kind === "content").map((column) => column.id);
+    const cells = sortCells(
+      toReviewCells(reviewCells).filter((cell) => contentIds.includes(cell.column)),
+      columns,
     );
-  }, []);
+    const keepInfo = (info: PaperInfo): PaperInfo => {
+      const next: PaperInfo = { title: info.title };
+      columns.forEach((column) => {
+        if (column.infoKey && column.infoKey !== "title") next[column.infoKey] = info[column.infoKey];
+      });
+      return next;
+    };
+    // Mỗi lần mở là một bài mới có mã riêng, để bài sau không ghi đè bài trước.
+    const id = `bai-${crypto.randomUUID()}`;
+    const session: ReviewSession = {
+      id,
+      tableId: activeTable.id,
+      paper: { ...reviewPaper, id, info: keepInfo(reviewPaper.info), suggested_info: keepInfo(reviewPaper.suggested_info) },
+      fileName: null,
+      pages: null,
+      cells,
+      infoConfirmed: false,
+    };
+    setSavedTitle(null);
+    setQueue((current) => [...current, { id, tableId: activeTable.id, fileName: "Bài mẫu", size: 0, status: "ready", session, sample: true }]);
+    setOpenId(id);
+  }, [activeTable, hydrated]);
 
-  const updateInfo = useCallback<Store["updateInfo"]>((info) => {
-    setReview((current) => current && { ...current, paper: { ...current.paper, info } });
-  }, []);
+  const review = useMemo(() => queue.find((item) => item.id === openId && item.status === "ready")?.session ?? null, [queue, openId]);
 
-  const setInfoConfirmed = useCallback<Store["setInfoConfirmed"]>((infoConfirmed) => {
-    setReview((current) => current && { ...current, infoConfirmed });
-  }, []);
+  const updateOpen = useCallback(
+    (change: (session: ReviewSession) => ReviewSession) => {
+      setQueue((current) => current.map((item) => (item.id === openId && item.session ? { ...item, session: change(item.session) } : item)));
+    },
+    [openId],
+  );
 
-  const saveReview = useCallback(() => {
+  const updateCell = useCallback<Store["updateCell"]>(
+    (index, change) =>
+      updateOpen((current) => ({
+        ...current,
+        cells: current.cells.map((cell, i) => (i === index ? { ...cell, ...change, quick: false } : cell)),
+      })),
+    [updateOpen],
+  );
+
+  const quickApprove = useCallback<Store["quickApprove"]>(
+    () =>
+      updateOpen((current) => ({
+        ...current,
+        cells: current.cells.map((cell) => (cell.review === "pending" ? { ...cell, review: "confirmed", quick: true } : cell)),
+      })),
+    [updateOpen],
+  );
+
+  const updateInfo = useCallback<Store["updateInfo"]>(
+    (info) => updateOpen((current) => ({ ...current, paper: { ...current.paper, info } })),
+    [updateOpen],
+  );
+
+  const setInfoConfirmed = useCallback<Store["setInfoConfirmed"]>(
+    (infoConfirmed) => updateOpen((current) => ({ ...current, infoConfirmed })),
+    [updateOpen],
+  );
+
+  const saveReview = useCallback<Store["saveReview"]>(() => {
     // AI chỉ đề xuất: còn ô chưa duyệt hoặc chưa xác nhận thông tin bài thì không được lưu.
     if (!review || !review.infoConfirmed || review.cells.some((cell) => cell.review === "pending")) return false;
 
     review.cells.forEach((cell) =>
-      logEvent(cell.review === "edited" ? "o_bi_sua" : "o_giu_nguyen", { cot: cell.column, noi: "duyet" }),
+      logEvent(cell.review === "edited" ? "o_bi_sua" : "o_giu_nguyen", {
+        cot: cell.column,
+        noi: "duyet",
+        bai: review.id,
+        ...(cell.quick ? { cach: "duyet_nhanh" } : {}),
+      }),
     );
     (Object.keys(review.paper.info) as (keyof PaperInfo)[]).forEach((key) =>
       logEvent(review.paper.info[key] !== review.paper.suggested_info[key] ? "o_bi_sua" : "o_giu_nguyen", {
         cot: `info-${key}`,
         noi: "duyet",
+        bai: review.id,
       }),
     );
-    logEvent("bam_luu_vao_bang", { bai: review.paper.id });
+    logEvent("bam_luu_vao_bang", {
+      bai: review.paper.id,
+      ...(review.paper.filled_by ? { model: review.paper.filled_by.model, du_phong: review.paper.filled_by.fallback ? 1 : 0 } : {}),
+    });
 
     const saved: SavedPaper = { ...review.paper, cells: review.cells };
     setTables((current) =>
@@ -468,11 +676,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           : table,
       ),
     );
+    void deletePending(review.id);
     setActiveId(review.tableId);
     setSavedTitle(saved.info.title);
-    setReview(null);
-    return true;
-  }, [review]);
+    const next = queue.find((item) => item.status === "ready" && item.id !== review.id && item.tableId === review.tableId)?.id ?? null;
+    setQueue((current) => current.map((item) => (item.id === review.id ? { ...item, status: "saved", session: undefined } : item)));
+    setOpenId(next);
+    return { next };
+  }, [review, queue]);
 
   const value = useMemo(
     () => ({
@@ -487,7 +698,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reorderColumns,
       review,
       savedTitle,
-      startReview,
+      queue,
+      queueLoaded,
+      addFiles,
+      retryItem,
+      removeItem,
+      openReview,
+      startSampleReview,
+      quickApprove,
       updateCell,
       updateInfo,
       setInfoConfirmed,
@@ -518,7 +736,14 @@ formatCells,
       reorderColumns,
       review,
       savedTitle,
-      startReview,
+      queue,
+      queueLoaded,
+      addFiles,
+      retryItem,
+      removeItem,
+      openReview,
+      startSampleReview,
+      quickApprove,
       updateCell,
       updateInfo,
       setInfoConfirmed,

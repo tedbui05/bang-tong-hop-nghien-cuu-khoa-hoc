@@ -67,7 +67,9 @@ export const callGemini: CallModel = async ({ model, timeoutMs, systemInstructio
   if (!response.ok) {
     console.error("[gemini]", model, "lỗi HTTP", response.status, "sau", seconds());
     // 429: hết lượt miễn phí hoặc gửi quá nhanh. 503: máy chủ Gemini đang quá tải.
-    if (response.status === 429 || response.status === 503) return { ok: false, kind: "overloaded" };
+    // Hết lượt trong ngày thì Google ghi tên hạn mức có chữ "PerDay". Chỉ dò chữ này, không ghi lời gốc vào log.
+    if (response.status === 429) return { ok: false, kind: (await isDailyQuota(response)) ? "quota" : "overloaded" };
+    if (response.status === 503) return { ok: false, kind: "overloaded" };
     // 401, 403: key sai hoặc không có quyền. 404: tên model sai hoặc model đã ngừng cho người dùng mới.
     if (response.status === 401 || response.status === 403 || response.status === 404) {
       console.error("[gemini] kiểm tra lại GEMINI_API_KEY và GEMINI_MODEL");
@@ -86,6 +88,14 @@ export const callGemini: CallModel = async ({ model, timeoutMs, systemInstructio
   console.info("[gemini]", model, "HTTP", response.status, "sau", seconds());
   return readCandidate(data);
 };
+
+async function isDailyQuota(response: Response): Promise<boolean> {
+  try {
+    return /PerDay/i.test(await response.text());
+  } catch {
+    return false;
+  }
+}
 
 function readCandidate(data: GeminiResponse): ModelResult {
   if (data.promptFeedback?.blockReason) {

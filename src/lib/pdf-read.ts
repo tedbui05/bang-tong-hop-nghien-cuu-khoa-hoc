@@ -22,7 +22,8 @@ export type PdfPage = { page: number; text: string };
 
 export type PdfErrorCode = "not_pdf" | "empty" | "too_large" | "password" | "scanned" | "damaged";
 
-export type PdfError = { code: PdfErrorCode; title: string; detail: string };
+// retry: thử lại có ích không (ví dụ mất mạng khi tải công cụ đọc PDF). Lỗi của chính file thì không.
+export type PdfError = { code: PdfErrorCode; title: string; detail: string; retry?: boolean };
 
 export type PdfReadResult = { ok: true; pages: PdfPage[] } | { ok: false; error: PdfError };
 

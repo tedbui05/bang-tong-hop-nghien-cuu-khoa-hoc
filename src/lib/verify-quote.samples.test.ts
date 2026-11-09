@@ -32,6 +32,10 @@ function cell(quote: string, page: number): AiCell {
   return { column: "test", value_vi: "x", quote_original: quote, quote_vi: "x", page, status: "proposed", check: null, ai_page: page };
 }
 
+// Chỉ giữ chữ cái (bỏ dấu, khoảng trắng, dấu câu, chữ số), để so đoạn tô với câu trích.
+const letters = (text: string) =>
+  [...text.normalize("NFKD").toLowerCase()].filter((char) => /\p{L}/u.test(char)).join("");
+
 type Case = { name: string; quote: string; page: number; check: AiCell["check"]; correctedPage?: number; cites?: boolean };
 
 const papers: { label: string; prefix: string; cases: Case[] }[] = [
@@ -163,6 +167,17 @@ for (const paper of papers) {
         expect(result.cites_other_source).toBe(test.cites ?? false);
         // Câu trích gốc không bao giờ bị đổi.
         expect(result.quote_original).toBe(test.quote);
+        // Ô đã khớp hoặc đã sửa số trang có vị trí để tô vàng, và đoạn tô đúng là câu trích.
+        // Ô cần kiểm tra không tô.
+        if (test.check === "needs_review") {
+          expect(result.quote_ranges ?? null).toBeNull();
+        } else {
+          const ranges = result.quote_ranges!;
+          expect(ranges[0].page).toBe(result.page);
+          const marked = ranges.map((range) => pages.find((page) => page.page === range.page)!.text.slice(range.start, range.end)).join("");
+          expect(letters(marked)).toBe(letters(test.quote));
+          if (test.name.includes("vắt từ trang 2 sang trang 3")) expect(ranges.map((range) => range.page)).toEqual([2, 3]);
+        }
       });
     }
 

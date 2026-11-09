@@ -2,6 +2,7 @@
 // Kết quả chỉ là đề xuất: chưa kiểm tra câu trích, chưa ghi vào bảng.
 import { extractPaper, readExtractBody } from "@/lib/ai-extract";
 import { callGemini, geminiModels } from "@/lib/gemini.server";
+import { sampleAnswer, sampleAnswersEnabled } from "@/lib/sample-answer.server";
 
 // Chờ AI đọc bài có thể mất vài phút.
 export const maxDuration = 300;
@@ -19,6 +20,12 @@ export async function POST(request: Request) {
       { ok: false, error: { code: "bad_request", title: "Dữ liệu gửi lên không hợp lệ", detail: "Hãy tải lại trang rồi thử lại.", retry: false } },
       { status: 400 },
     );
+  }
+  // Chỉ khi chạy trên máy bằng `npm run dev` và bật AI_DUNG_KET_QUA_MAU=1 (xem sample-answer.server.ts).
+  if (sampleAnswersEnabled()) {
+    const fileName = typeof (body as { fileName?: unknown }).fileName === "string" ? (body as { fileName: string }).fileName : "";
+    const ids = input.columns.filter((column) => column.kind === "content").map((column) => column.id);
+    return Response.json(await sampleAnswer(fileName, ids));
   }
   const result = await extractPaper(input.columns, input.pages, callGemini, geminiModels());
   // Lỗi đã được đổi thành câu tiếng Việt nằm trong result, trang web đọc trường ok để biết.

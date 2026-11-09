@@ -241,6 +241,28 @@ describe("model dự phòng", () => {
     expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-du-phong"]);
   });
 
+  it("model chính hết lượt trong ngày: chuyển sang model dự phòng", async () => {
+    const model = fakeModel({ ok: false, kind: "quota" }, goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(result.ok && result.model).toBe("model-du-phong");
+  });
+
+  it("cả hai model đều hết lượt trong ngày: báo hết lượt, có nút thử lại", async () => {
+    const model = fakeModel({ ok: false, kind: "quota" }, { ok: false, kind: "quota" });
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    if (result.ok) throw new Error("Mong đợi báo lỗi");
+    expect(result.error.code).toBe("quota");
+    expect(result.error.title).toBe("Đã hết lượt AI miễn phí hôm nay");
+    expect(result.error.retry).toBe(true);
+  });
+
+  it("không có model dự phòng, hết lượt trong ngày: báo hết lượt", async () => {
+    const model = fakeModel({ ok: false, kind: "quota" });
+    const result = await extractPaper(columns, pages, model.call, { primary: "model-chinh" });
+    expect(!result.ok && result.error.code).toBe("quota");
+    expect(model.calls).toHaveLength(1);
+  });
+
   it("model chính quá giờ, model dự phòng lỗi khác: vẫn báo quá tải kèm nút thử lại", async () => {
     const model = fakeModel(timeout, { ok: false, kind: "failed" });
     const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
@@ -330,8 +352,8 @@ describe("giới hạn thời gian và nhật ký của model dự phòng", () =
   });
 
   it("dòng chữ ở màn hình chờ: sau 60 giây báo bài dài để sinh viên không tưởng app bị treo", () => {
-    expect(waitingMessage(0)).toBe("AI đang đọc bài và điền bảng…");
-    expect(waitingMessage(59)).toBe("AI đang đọc bài và điền bảng…");
+    expect(waitingMessage(0)).toBe("AI đang đọc bài, có thể mất 1 đến 2 phút");
+    expect(waitingMessage(59)).toBe("AI đang đọc bài, có thể mất 1 đến 2 phút");
     expect(waitingMessage(60)).toBe("AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút");
     expect(waitingMessage(140)).toBe("AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút");
   });

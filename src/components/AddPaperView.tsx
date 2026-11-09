@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
+import { waitingMessage } from "@/lib/ai-extract";
 import { hasContentColumn, isOwnColumn } from "@/lib/columns";
-import { readPdfInBrowser } from "@/lib/pdf-browser";
-import { MAX_PDF_BYTES, checkPdfFile, formatMegabytes, type PdfError } from "@/lib/pdf-read";
+import { MAX_PDF_BYTES, formatMegabytes } from "@/lib/pdf-read";
 import type { PreviewState } from "@/lib/preview-state";
-import { useStore } from "@/lib/store";
+import { STATUS_LABELS } from "@/lib/sheet";
+import { useStore, type QueueItem } from "@/lib/store";
+import { getLabelKey, type LabelKey } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
+import { StatusIcon } from "./StatusBadge";
 
 const PRIVACY_NOTE = "Chỉ tải lên bài báo đã công bố. Không tải tài liệu mật hoặc chưa công bố.";
 
@@ -17,77 +20,79 @@ export function AddPaperView({ state }: { state: PreviewState }) {
   return <AddPaperContent key={state} state={state} />;
 }
 
-function AddPaperContent({ state }: { state: PreviewState }) {
-  const router = useRouter();
-  const { activeTable, startReview, hydrated } = useStore();
-  const table = state === "trong" ? null : activeTable;
-  const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<Pick<PdfError, "title" | "detail"> | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [reading, setReading] = useState(false);
-  // Mỗi lần chọn file hoặc rời trang thì tăng lên, để kết quả của lần đọc cũ không ghi đè lần mới.
-  const attempt = useRef(0);
-
-  useEffect(() => {
-    const counter = attempt;
-    return () => {
-      counter.current++;
-    };
-  }, []);
-
-  async function chooseFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const current = ++attempt.current;
-    if (files.length > 1) {
-      setFile(null);
-      setFileError({
-        title: `Bạn vừa chọn ${files.length} file`,
-        detail: "Mỗi lần chỉ nhận một bài báo, hãy chọn lại một file.",
-      });
+// Đọc mọi file trong thư mục được kéo thả vào, kể cả thư mục con.
+async function filesFromDrop(items: DataTransferItemList): Promise<File[]> {
+  const entries = [...items].map((item) => item.webkitGetAsEntry?.()).filter((entry): entry is FileSystemEntry => Boolean(entry));
+  const out: File[] = [];
+  async function walk(entry: FileSystemEntry): Promise<void> {
+    if (entry.isFile) {
+      const file = await new Promise<File | null>((resolve) => (entry as FileSystemFileEntry).file(resolve, () => resolve(null)));
+      if (file) out.push(file);
       return;
     }
-    const chosen = files[0];
-    // Kiểm tra nhanh loại file và dung lượng ngay khi chọn, chưa đọc cả file.
-    const problem = await checkPdfFile(chosen).catch(() => null);
-    if (current !== attempt.current) return;
-    setFile(problem ? null : chosen);
-    setFileError(problem);
+    if (!entry.isDirectory) return;
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    // readEntries trả về từng đợt, gọi đến khi hết.
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((resolve) => reader.readEntries(resolve, () => resolve([])));
+      if (!batch.length) break;
+      for (const child of batch) await walk(child);
+    }
+  }
+  for (const entry of entries) await walk(entry);
+  return out;
+}
+
+function AddPaperContent({ state }: { state: PreviewState }) {
+  const { activeTable, hydrated, queue, addFiles } = useStore();
+  const table = state === "trong" ? null : activeTable;
+  const [dragging, setDragging] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const folderInput = useRef<HTMLInputElement | null>(null);
+  const canAdd = Boolean(table && hydrated && hasContentColumn(table.columns));
+
+  const items = queue.filter((item) => !item.sample);
+  const working = items.some((item) => ["waiting", "reading", "ai", "checking"].includes(item.status));
+
+  // Tải lại trang khi còn bài chưa xử lý xong thì mất file: nhắc trước.
+  useEffect(() => {
+    if (!working) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [working]);
+
+  function take(files: File[]) {
+    if (!canAdd || files.length === 0) return;
+    // Bỏ file ẩn của hệ điều hành (.DS_Store) khỏi danh sách báo bỏ qua.
+    const visible = files.filter((file) => !file.name.startsWith("."));
+    setSkipped(addFiles(visible));
   }
 
-  function handleDrop(event: DragEvent) {
+  async function handleDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    void chooseFiles(event.dataTransfer.files);
+    const list = event.dataTransfer.items?.length ? await filesFromDrop(event.dataTransfer.items) : [...event.dataTransfer.files];
+    take(list.length ? list : [...event.dataTransfer.files]);
   }
 
-  async function startReading() {
-    if (!file || !table || !hydrated || !hasContentColumn(table.columns)) return;
-    const current = ++attempt.current;
-    setReading(true);
-    setFileError(null);
-    const result = await readPdfInBrowser(file);
-    if (current !== attempt.current) return;
-    if (!result.ok) {
-      setReading(false);
-      setFile(null);
-      setFileError(result.error);
-      return;
-    }
-    // Chưa nối AI: trang duyệt vẫn hiện bài mẫu, chữ từng trang được giữ để làm bước kiểm tra câu trích.
-    startReview(file.name, result.pages);
-    router.push("/duyet-bai");
+  if (state === "dang-tai") {
+    return (
+      <main id="noi-dung" className="page page--narrow">
+        <h1 className="page-title">Thêm bài báo</h1>
+        <StateMessage tone="loading" title="Đang đọc bài báo…">
+          <p>Bước này có thể mất một lúc.</p>
+          <SkeletonLines />
+        </StateMessage>
+      </main>
+    );
   }
 
   return (
     <main id="noi-dung" className="page page--narrow">
       <h1 className="page-title">Thêm bài báo</h1>
 
-      {state === "dang-tai" || reading ? (
-        <StateMessage tone="loading" title="Đang đọc bài báo…">
-          <p>{file ? `${file.name}. ` : ""}Bước này có thể mất một lúc.</p>
-          <SkeletonLines />
-        </StateMessage>
-      ) : state === "loi" ? (
+      {state === "loi" ? (
         <StateMessage
           tone="error"
           title="Chưa đọc được file này"
@@ -114,40 +119,60 @@ function AddPaperContent({ state }: { state: PreviewState }) {
       ) : (
         <>
           <label
-            className={`dropzone${dragging ? " dropzone--active" : ""}`}
+            className={`dropzone${dragging ? " dropzone--active" : ""}${canAdd ? "" : " dropzone--disabled"}`}
             onDragOver={(event) => {
               event.preventDefault();
               setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
+            onDrop={(event) => void handleDrop(event)}
           >
             <input
               type="file"
               accept="application/pdf,.pdf"
+              multiple
+              disabled={!canAdd}
               className="visually-hidden"
-              aria-describedby={fileError ? "loi-file privacy-note" : "privacy-note"}
+              aria-describedby="privacy-note"
               onChange={(event) => {
-                void chooseFiles(event.target.files);
+                take([...(event.target.files ?? [])]);
                 event.target.value = "";
               }}
             />
-            {file ? (
-              <>
-                <strong className="dropzone__file">{file.name}</strong>
-                <span>Kéo thả hoặc bấm để đổi file khác</span>
-              </>
-            ) : (
-              <>
-                <strong>Kéo thả file PDF vào đây</strong>
-                <span>hoặc bấm để chọn từ máy. Một file PDF, tối đa {formatMegabytes(MAX_PDF_BYTES)}.</span>
-              </>
-            )}
+            <strong>Kéo thả file PDF hoặc cả thư mục vào đây</strong>
+            <span>
+              hoặc bấm để chọn file. Chọn được nhiều file, mỗi file tối đa {formatMegabytes(MAX_PDF_BYTES)}. App đọc lần lượt
+              từng bài.
+            </span>
           </label>
 
-          {fileError ? (
-            <p id="loi-file" className="field-error" role="alert">
-              <strong>{fileError.title}.</strong> {fileError.detail}
+          <div className="dropzone-actions">
+            <button type="button" className="link-button" disabled={!canAdd} onClick={() => folderInput.current?.click()}>
+              Chọn cả thư mục
+            </button>
+            <input
+              ref={folderInput}
+              type="file"
+              multiple
+              className="visually-hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              {...{ webkitdirectory: "" }}
+              onChange={(event) => {
+                take([...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
+          </div>
+
+          {!hasContentColumn(table.columns) ? (
+            <p className="field-error">Bảng chưa có cột nội dung nào để điền. Hãy thêm cột trước.</p>
+          ) : null}
+
+          {skipped.length > 0 ? (
+            <p className="notice notice--soft" role="status">
+              Đã bỏ qua {skipped.length} file không phải PDF: {skipped.slice(0, 5).join(", ")}
+              {skipped.length > 5 ? ` và ${skipped.length - 5} file khác` : ""}.
             </p>
           ) : null}
 
@@ -155,21 +180,7 @@ function AddPaperContent({ state }: { state: PreviewState }) {
             {PRIVACY_NOTE}
           </p>
 
-          {file ? (
-            <div className="form-actions">
-              <button
-                type="button"
-                className="button button--primary"
-                disabled={!hydrated || !hasContentColumn(table.columns)}
-                onClick={() => void startReading()}
-              >
-                Đọc bài báo
-              </button>
-              {!hasContentColumn(table.columns) ? (
-                <p className="form-actions__hint">Bảng chưa có cột nội dung nào để điền. Hãy thêm cột trước.</p>
-              ) : null}
-            </div>
-          ) : null}
+          {items.length > 0 ? <PaperQueue items={items} /> : null}
 
           <section className="columns-section" aria-labelledby="cac-cot">
             <h2 id="cac-cot">Sẽ điền vào bảng “{table.name}” theo các cột:</h2>
@@ -187,5 +198,129 @@ function AddPaperContent({ state }: { state: PreviewState }) {
         </>
       )}
     </main>
+  );
+}
+
+function PaperQueue({ items }: { items: QueueItem[] }) {
+  const router = useRouter();
+  const { openReview, retryItem, removeItem } = useStore();
+  const [now, setNow] = useState(() => Date.now());
+  const waitingAi = items.some((item) => item.status === "ai");
+
+  // Đồng hồ để đếm số giây đã chờ AI.
+  useEffect(() => {
+    if (!waitingAi) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [waitingAi]);
+
+  const ready = items.filter((item) => item.status === "ready").length;
+  const saved = items.filter((item) => item.status === "saved").length;
+  const left = items.filter((item) => ["waiting", "reading", "ai", "checking"].includes(item.status)).length;
+
+  return (
+    <section className="queue" aria-labelledby="hang-cho">
+      <div className="queue__head">
+        <h2 id="hang-cho">Hàng chờ</h2>
+        <p className="queue__summary">
+          {items.length} bài
+          {left ? ` · ${left} đang xử lý` : ""}
+          {ready ? ` · ${ready} chờ duyệt` : ""}
+          {saved ? ` · ${saved} đã lưu` : ""}
+        </p>
+      </div>
+      <ol className="queue__list">
+        {items.map((item) => (
+          <li key={item.id} className={`queue-item queue-item--${item.status}`}>
+            <div className="queue-item__main">
+              <p className="queue-item__name">{item.fileName}</p>
+              <QueueStatusLine item={item} now={now} />
+            </div>
+            <div className="queue-item__actions">
+              {item.status === "ready" ? (
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={() => {
+                    openReview(item.id);
+                    router.push("/duyet-bai");
+                  }}
+                >
+                  Duyệt bài
+                </button>
+              ) : null}
+              {item.status === "error" && item.error?.retry ? (
+                <button type="button" className="button button--secondary" onClick={() => retryItem(item.id)}>
+                  Thử lại
+                </button>
+              ) : null}
+              {item.status === "waiting" || item.status === "error" || item.status === "saved" ? (
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  aria-label={`Bỏ ${item.fileName} khỏi danh sách`}
+                  onClick={() => removeItem(item.id)}
+                >
+                  Bỏ khỏi danh sách
+                </button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function QueueStatusLine({ item, now }: { item: QueueItem; now: number }) {
+  if (item.status === "error" && item.error) {
+    return (
+      <div className="queue-item__error" role="alert">
+        <p className="queue-item__error-title">{item.error.title}</p>
+        <p>{item.error.detail}</p>
+      </div>
+    );
+  }
+  if (item.status === "ai") {
+    const seconds = Math.max(0, Math.floor((now - (item.aiStartedAt ?? now)) / 1000));
+    return (
+      <p className="queue-item__status">
+        <span className="spinner" aria-hidden="true" />
+        <span role="status">{waitingMessage(seconds)}</span>
+        <span className="queue-item__time">Đã chờ {seconds} giây</span>
+      </p>
+    );
+  }
+  if (item.status === "ready" && item.session) {
+    const counts = new Map<LabelKey, number>();
+    for (const cell of item.session.cells) counts.set(getLabelKey(cell), (counts.get(getLabelKey(cell)) ?? 0) + 1);
+    const order: LabelKey[] = ["verified", "page_corrected", "needs_review", "not_found"];
+    return (
+      <div className="queue-item__status queue-item__status--ready">
+        <span role="status">AI đã điền xong, chờ bạn duyệt.</span>
+        <ul className="queue-item__counts" aria-label="Kết quả kiểm tra câu trích">
+          {order
+            .filter((key) => counts.get(key))
+            .map((key) => (
+              <li key={key} className={`queue-count queue-count--${key}`}>
+                <StatusIcon label={key} />
+                {counts.get(key)} {STATUS_LABELS[key]}
+              </li>
+            ))}
+        </ul>
+      </div>
+    );
+  }
+  const text: Record<string, string> = {
+    waiting: "Đang chờ đến lượt",
+    reading: "Đang đọc chữ trong file…",
+    checking: "Đang kiểm tra câu trích…",
+    saved: "Đã lưu vào bảng",
+  };
+  return (
+    <p className="queue-item__status">
+      {item.status === "reading" || item.status === "checking" ? <span className="spinner" aria-hidden="true" /> : null}
+      <span role="status">{text[item.status] ?? ""}</span>
+    </p>
   );
 }

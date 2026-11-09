@@ -21,7 +21,13 @@ export type AiCell = {
   review_reason?: "too_short" | "multi_page" | "check_failed";
   // Câu trích có dấu hiệu dẫn nguồn khác. Là cảnh báo thêm, không thay thế kết quả kiểm tra.
   cites_other_source?: boolean;
+  // Vị trí câu trích trong chữ gốc của trang (đã khớp hoặc đã sửa số trang), để tô vàng khi xem bằng chứng.
+  // Câu vắt qua hai trang thì có hai đoạn. null: không xác định được vị trí.
+  quote_ranges?: TextRange[] | null;
 };
+
+// Một đoạn chữ trong trang, tính theo vị trí ký tự trong chữ đọc từ PDF (pdf-read.ts).
+export type TextRange = { page: number; start: number; end: number };
 
 export type ReviewStatus = "pending" | "confirmed" | "edited";
 
@@ -29,6 +35,8 @@ export type ReviewStatus = "pending" | "confirmed" | "edited";
 export type ReviewCell = AiCell & {
   suggested_value: string;
   review: ReviewStatus;
+  // Được xác nhận bằng nút "Duyệt nhanh cả dòng", để tách riêng khi đo chỉ số.
+  quick?: boolean;
 };
 
 // Các cột thông tin bài. Riêng tên bài là bắt buộc để nhận biết dòng.
@@ -44,6 +52,8 @@ export type Paper = {
   suggested_info: PaperInfo;
   // Model AI đã điền bài này. Không có: bài mẫu của bản xem thử, chưa có AI điền.
   filled_by?: FilledBy;
+  // File PDF gốc đã giữ trong trình duyệt (paper-files.ts). hash để biết file tải lại có đúng là file cũ không.
+  file?: { name: string; size: number; hash: string };
 };
 
 // fallback: true khi model chính quá tải và bài được điền bằng model dự phòng.

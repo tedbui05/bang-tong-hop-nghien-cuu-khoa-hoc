@@ -1,20 +1,28 @@
 "use client";
 
 import { useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
 import { getLabelKey, getReviewReason, type Paper, type ReviewCell } from "@/lib/types";
 import { StatusBadge } from "./StatusBadge";
 
 type Props = {
   cell: ReviewCell;
   columnName: string;
+  // Câu hỏi gợi ý kiểm tra của cột.
+  question: string;
   paper: Paper;
+  // Ô đang hiện bằng chứng ở khung bên phải.
+  selected: boolean;
   register: (element: HTMLElement | null) => void;
+  onSelect: () => void;
+  // Điện thoại: mở khung chữ của trang.
+  onShowPage: () => void;
   onConfirm: () => void;
   onNext: () => void;
   onChange: (change: Partial<Pick<ReviewCell, "value_vi" | "review">>) => void;
 };
 
-export function ReviewCard({ cell, columnName, paper, register, onConfirm, onNext, onChange }: Props) {
+export function ReviewCard({ cell, columnName, question, paper, selected, register, onSelect, onShowPage, onConfirm, onNext, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(cell.value_vi);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +100,7 @@ export function ReviewCard({ cell, columnName, paper, register, onConfirm, onNex
     "review-card",
     !pending ? "review-card--done" : "",
     flagged && pending ? "review-card--flagged" : "",
+    selected ? "review-card--selected" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -108,6 +117,8 @@ export function ReviewCard({ cell, columnName, paper, register, onConfirm, onNex
       aria-keyshortcuts="Enter E"
       onKeyDown={handleCardKey}
       onBlur={handleBlur}
+      onFocus={onSelect}
+      onClick={onSelect}
     >
       <header className="review-card__header">
         <h2 id={`${id}-cot`}>{columnName}</h2>
@@ -169,6 +180,25 @@ export function ReviewCard({ cell, columnName, paper, register, onConfirm, onNex
           </div>
 
           {showTranslation ? <p className="evidence__translation">{cell.quote_vi}</p> : null}
+
+          {cell.cites_other_source ? (
+            <p className="cite-warning" role="note">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M8 2.5l6 11H2z M8 6.5v3.2 M8 11.8v.1" />
+              </svg>
+              <span>{CITED_SOURCE_WARNING}.</span>
+            </p>
+          ) : null}
+
+          {pending ? (
+            <p className="review-question">
+              <span className="review-question__lead">Tự hỏi trước khi xác nhận:</span> {question}
+            </p>
+          ) : null}
+
+          <button type="button" className="link-button review-card__page-button" onClick={onShowPage}>
+            Xem đoạn gốc trong trang {flagged ? cell.ai_page ?? cell.page : cell.page}
+          </button>
 
           {label === "page_corrected" ? (
             <p className="small-note">

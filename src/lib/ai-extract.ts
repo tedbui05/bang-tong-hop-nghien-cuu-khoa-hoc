@@ -19,7 +19,8 @@ export type ModelCall = {
 };
 
 // Kết quả của một lần gọi AI, đã bỏ mọi chi tiết kỹ thuật (không có key, không có lời gốc của máy chủ AI).
-export type ModelErrorKind = "overloaded" | "blocked" | "timeout" | "not_configured" | "failed";
+// "quota": Google báo rõ đã hết lượt miễn phí trong ngày của model đó.
+export type ModelErrorKind = "overloaded" | "quota" | "blocked" | "timeout" | "not_configured" | "failed";
 
 export type ModelResult = { ok: true; text: string } | { ok: false; kind: ModelErrorKind };
 
@@ -27,6 +28,7 @@ export type CallModel = (call: ModelCall) => Promise<ModelResult>;
 
 export type ExtractErrorCode =
   | "overloaded"
+  | "quota"
   | "bad_format"
   | "too_long"
   | "no_text"
@@ -52,7 +54,7 @@ export const DEFAULT_PRIMARY_TIMEOUT_SECONDS = 150;
 export const LONG_WAIT_SECONDS = 60;
 
 export function waitingMessage(elapsedSeconds: number): string {
-  return elapsedSeconds < LONG_WAIT_SECONDS ? "AI đang đọc bài và điền bảng…" : "AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút";
+  return elapsedSeconds < LONG_WAIT_SECONDS ? "AI đang đọc bài, có thể mất 1 đến 2 phút" : "AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút";
 }
 
 // Model dự phòng là đường cuối cùng nên được chờ lâu hơn.
@@ -86,6 +88,13 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
   switch (code) {
     case "overloaded":
       return { code, title: OVERLOADED_MESSAGE, detail: "AI đang nhận quá nhiều yêu cầu hoặc đã hết lượt dùng miễn phí. Bài của bạn chưa bị mất.", retry: true };
+    case "quota":
+      return {
+        code,
+        title: "Đã hết lượt AI miễn phí hôm nay",
+        detail: "Google cấp lại lượt miễn phí mỗi ngày. Bài của bạn chưa bị mất, hãy bấm Thử lại vào ngày mai.",
+        retry: true,
+      };
     case "bad_format":
       return {
         code,
@@ -117,8 +126,9 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
 const MAX_ATTEMPTS = 2;
 
 // Model chính gặp các lỗi này thì chuyển sang model dự phòng: máy chủ quá tải, hết lượt, hoặc chờ quá lâu.
+// Lượt miễn phí của Google tính riêng cho từng model, nên model chính hết lượt thì model dự phòng vẫn có thể còn.
 // Lỗi khác (key sai, bị chặn, sai khuôn) thì model dự phòng cũng không giúp được, nên báo luôn.
-const SWITCH_TO_FALLBACK = new Set<ModelErrorKind>(["overloaded", "timeout"]);
+const SWITCH_TO_FALLBACK = new Set<ModelErrorKind>(["overloaded", "quota", "timeout"]);
 
 type ModelRun =
   | { ok: true; answer: AiAnswer; attempts: number }
@@ -177,7 +187,8 @@ export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callMo
     logEvent("dung_model_du_phong", { model: fallback, ly_do: primary.code, ket_qua: second.ok ? "duoc" : "loi" });
     if (second.ok) return done(second, fallback, true, attempts);
     // Model dự phòng sai khuôn thì báo sai khuôn; lỗi khác thì báo quá tải như cũ, kèm nút Thử lại.
-    const code = second.code === "bad_format" ? "bad_format" : "overloaded";
+    // Cả hai model đều hết lượt trong ngày thì báo hết lượt, để sinh viên biết thử lại ngay cũng không được.
+    const code = second.code === "bad_format" ? "bad_format" : primary.code === "quota" && second.code === "quota" ? "quota" : "overloaded";
     return { ok: false, error: extractError(code), attempts, usedFallback: true };
   }
 
