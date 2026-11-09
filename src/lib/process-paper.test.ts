@@ -109,14 +109,15 @@ describe("xử lý một bài trong hàng chờ", () => {
   it("file PDF lỗi: báo lỗi của file, không gọi AI", async () => {
     const d = deps(answer(), async () => ({ ok: false, error: { code: "scanned", title: "Bản đầu tiên chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc." } }));
     const result = await processPaper(input(), d);
-    expect(result).toEqual({ ok: false, error: { title: "Bản đầu tiên chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc.", retry: false } });
+    expect(result).toEqual({ ok: false, error: { title: "Bản đầu tiên chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc.", retry: false }, stored: null });
     expect(d.calls).toHaveLength(0);
   });
 
   it("máy chủ báo lỗi AI: giữ nguyên câu tiếng Việt và nút Thử lại", async () => {
     const error = { code: "overloaded", title: "Hệ thống đang quá tải, vui lòng thử lại sau ít phút", detail: "Bài của bạn chưa bị mất.", retry: true };
     const result = await processPaper(input(), deps({ ok: false, error, attempts: 2, usedFallback: true }));
-    expect(result).toEqual({ ok: false, error: { title: error.title, detail: error.detail, retry: true } });
+    // File đã được giữ trước khi gọi AI: bài nằm lại trong hàng chờ để thử lại.
+    expect(result).toEqual({ ok: false, error: { title: error.title, detail: error.detail, retry: true }, stored: { name: "lin-2023.pdf", size: 4, hash: "abc" } });
   });
 
   it("mất mạng hoặc máy chủ trả lời lạ: báo lỗi tiếng Việt kèm Thử lại", async () => {
@@ -130,6 +131,24 @@ describe("xử lý một bài trong hàng chờ", () => {
     const d = { ...deps(answer()), savePdf: async () => false };
     const result = await processPaper(input(), d);
     expect(result.ok && result.pdfSaved).toBe(false);
+  });
+});
+
+describe("hết lượt AI: bài vẫn nằm trong hàng chờ", () => {
+  it("bị chặn vì hết lượt: giữ file, có Thử lại; thử lại sau khi tải lại trang dùng chữ đã giữ, không đọc lại file", async () => {
+    const limit = { ok: false, error: { code: "limit_user", title: "Bạn đã dùng hết lượt AI hôm nay", detail: "Bài vẫn nằm trong hàng chờ.", retry: true }, attempts: 0, usedFallback: false };
+    const blocked = await processPaper(input(), deps(limit));
+    if (blocked.ok) throw new Error("Mong đợi bị chặn");
+    expect(blocked.error.retry).toBe(true);
+    expect(blocked.stored).toEqual({ name: "lin-2023.pdf", size: 4, hash: "abc" });
+
+    const readPdf = vi.fn();
+    const d = deps(answer(), readPdf);
+    const retried = await processPaper({ id: "bai-1", tableId: "bang-1", columns, onStage: vi.fn(), pages, fileMeta: blocked.stored! }, d);
+    expect(readPdf).not.toHaveBeenCalled();
+    expect(retried.ok && retried.session.paper.file).toEqual(blocked.stored);
+    expect(retried.ok && retried.session.fileName).toBe("lin-2023.pdf");
+    expect((d.calls[0] as { pages: PdfPage[] }).pages).toEqual(pages);
   });
 });
 

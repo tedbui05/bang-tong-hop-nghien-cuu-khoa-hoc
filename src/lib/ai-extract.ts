@@ -4,6 +4,7 @@
 // Hàm gọi AI được truyền vào từ ngoài, nên bài test dùng câu trả lời giả, không gọi Gemini thật.
 import { parseAiAnswer, type AiAnswer } from "./ai-answer";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
+import { limitError } from "./ai-limit";
 import { logEvent } from "./events";
 import type { PdfPage } from "./pdf-read";
 import { MAX_PAPER_CHARS, countPaperChars, stripReferences } from "./strip-references";
@@ -35,7 +36,11 @@ export type ExtractErrorCode =
   | "blocked"
   | "timeout"
   | "not_configured"
-  | "failed";
+  | "failed"
+  // Chặn gọi AI tràn lan (ai-limit.ts): chưa đăng nhập, hết lượt của người dùng, hết lượt của cả app.
+  | "not_signed_in"
+  | "limit_user"
+  | "limit_total";
 
 // retry: có hiện nút "Thử lại" hay không.
 export type ExtractError = { code: ExtractErrorCode; title: string; detail: string; retry: boolean };
@@ -135,6 +140,10 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
       return { code, title: "AI chưa được cài đặt đúng", detail: "Máy chủ của app thiếu hoặc sai thông tin để gọi AI. Hãy báo người quản lý app.", retry: false };
     case "failed":
       return { code, title: "Chưa gọi được AI", detail: "Có lỗi khi gửi bài cho AI. Hãy thử lại sau ít phút.", retry: true };
+    case "not_signed_in":
+    case "limit_user":
+    case "limit_total":
+      return limitError(code);
   }
 }
 

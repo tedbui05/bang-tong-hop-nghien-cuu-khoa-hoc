@@ -9,7 +9,8 @@ import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
 import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
 import { readPdfInBrowser } from "./pdf-browser";
-import { processPaper } from "./process-paper";
+import { processPaper, type FileMeta } from "./process-paper";
+import { getAccessToken } from "./supabase-browser";
 import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
 // Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
@@ -52,6 +53,9 @@ export type QueueItem = {
   session?: ReviewSession;
   // Bài mẫu của bản xem thử: không giữ trong IndexedDB.
   sample?: boolean;
+  // File PDF và chữ của trang đã giữ trong trình duyệt: bài lỗi (ví dụ hết lượt AI) vẫn nằm trong hàng chờ
+  // sau khi tải lại trang và bấm Thử lại được mà không cần chọn lại file.
+  stored?: FileMeta | null;
 };
 
 const BUSY: QueueStatus[] = ["reading", "ai", "checking"];
@@ -437,8 +441,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const saved = ((await loadAllPending()) ?? []) as QueueItem[];
       const items = await Promise.all(
         saved
-          .filter((item) => item?.id && item.session && item.status === "ready")
-          .map(async (item) => ({ ...item, session: { ...item.session!, pages: await loadPages(item.id) } })),
+          .filter((item) => item?.id && ((item.session && item.status === "ready") || (item.status === "error" && item.stored)))
+          .map(async (item) => (item.session ? { ...item, session: { ...item.session, pages: await loadPages(item.id) } } : item)),
       );
       if (cancelled) return;
       setQueue((current) => [...items.filter((item) => !current.some((other) => other.id === item.id)), ...current]);
@@ -456,6 +460,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       for (const item of queue) {
         if (item.status === "ready" && item.session && !item.sample) {
           void savePending(item.id, { ...item, session: { ...item.session, pages: null } });
+        } else if (item.status === "error" && item.stored) {
+          // Bài lỗi mà file đã được giữ: giữ lại trong hàng chờ để bấm Thử lại sau (ví dụ hết lượt AI hôm nay).
+          void savePending(item.id, item);
         }
       }
     }, 300);
@@ -495,8 +502,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const file = files.current.get(next.id);
       const table = tablesRef.current.find((item) => item.id === next.tableId);
+      // Không còn file trong trang (đã tải lại trang) nhưng chữ của bài đã được giữ: dùng lại chữ đó.
+      const storedPages = !file && next.stored ? await loadPages(next.id) : null;
       try {
-        if (!file || !table) {
+        if ((!file && !storedPages) || !table) {
           patchItem(next.id, {
             status: "error",
             error: {
@@ -512,15 +521,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             id: next.id,
             tableId: table.id,
             columns: table.columns,
-            file,
+            ...(file ? { file } : { pages: storedPages!, fileMeta: next.stored! }),
             onStage: (stage) => patchItem(next.id, stage === "ai" ? { status: "ai", aiStartedAt: Date.now() } : { status: stage }),
           },
           {
             readPdf: readPdfInBrowser,
             callApi: async (body) => {
+              // Máy chủ chỉ nhận yêu cầu có phiên đăng nhập (kể cả ẩn danh) để đếm lượt dùng AI.
+              const session = await getAccessToken();
+              if (!session.ok) return { ok: false, error: session.error, attempts: 0, usedFallback: false };
               const response = await fetch("/api/dien-bang", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
                 body: JSON.stringify(body),
               });
               return response.json().catch(() => null);
@@ -531,7 +543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           },
         );
         if (!outcome.ok) {
-          patchItem(next.id, { status: "error", error: outcome.error });
+          patchItem(next.id, { status: "error", error: outcome.error, stored: outcome.stored ?? next.stored ?? null });
           return;
         }
         // Cột có thể đã bị xoá trong lúc chờ AI: chỉ giữ các cột bảng đang có.
