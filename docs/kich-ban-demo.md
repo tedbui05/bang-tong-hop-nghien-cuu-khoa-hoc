@@ -47,7 +47,7 @@ Muốn gọn còn 3 phút: bỏ bước tạo bảng (0:30–0:50) và bước �
 | AI điền chậm hơn 1 phút | Nói trước phần khoảnh khắc 2 trong lúc chờ, hoặc mở bài đã chạy trước. |
 | Hết lượt AI trong ngày | App báo "Đã hết lượt AI miễn phí hôm nay". Dùng bài đã chạy trước. |
 | Mất mạng | App hiện dải báo mất mạng. Bảng đã lưu vẫn xem, sửa, xuất Excel được; phần tải bài mới phải chờ có mạng. |
-| Lỡ bấm "Đặt lại dữ liệu mẫu" | Mọi bảng và bài chờ duyệt bị xoá. Đừng bấm nút này trong buổi demo. |
+| Lỡ bấm "Xoá toàn bộ dữ liệu của tôi" (chân trang, chân bảng) | App hỏi lại và bắt gõ chữ XOÁ; bấm "Giữ dữ liệu" hoặc Esc để thoát. Đừng xoá trong buổi demo: mọi bảng và bài chờ duyệt sẽ mất. |
 
 ## Câu hỏi giám khảo hay hỏi
 

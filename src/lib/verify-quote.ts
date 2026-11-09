@@ -13,7 +13,8 @@ import type { AiCell, CheckResult, TextRange } from "./types";
 // câu quá ngắn như "n = 412" dễ trùng ngẫu nhiên nên không đủ làm căn cứ. Số tạm, chỉnh sau buổi thử thật.
 export const MIN_QUOTE_CHARS = 15;
 
-export type QuoteCheck = { check: CheckResult; page: number | null; review_reason?: AiCell["review_reason"] };
+// pages: các trang tìm thấy câu, chỉ có khi câu có ở nhiều trang (để hiển thị, không đổi kết quả).
+export type QuoteCheck = { check: CheckResult; page: number | null; review_reason?: AiCell["review_reason"]; pages?: number[] };
 
 // ---------------------------------------------------------------------------
 // Phần 2. Chuẩn hoá chữ để so sánh
@@ -215,7 +216,7 @@ export function verifyQuote(quote: string, aiPage: number | null, pages: PdfPage
 
   // 4b. Đếm số trang có câu đó.
   if (found.size === 0) return { check: "needs_review", page: aiPage }; // không có ở đâu
-  if (found.size > 1) return { check: "needs_review", page: aiPage, review_reason: "multi_page" }; // nhiều trang
+  if (found.size > 1) return { check: "needs_review", page: aiPage, review_reason: "multi_page", pages: [...found].sort((a, b) => a - b) }; // nhiều trang
   const [page] = found;
   if (page === aiPage) return { check: "verified", page }; // đúng trang AI ghi
   return { check: "page_corrected", page }; // đúng một trang khác: sửa theo trang tìm thấy
@@ -250,6 +251,8 @@ export function verifyCells(cells: AiCell[], pages: PdfPage[]): AiCell[] {
       // Ô "cần kiểm tra" không tô, vì chưa biết câu nằm ở đâu.
       const quote_ranges =
         result.check !== "needs_review" && result.page !== null ? safeLocate(cell.quote_original ?? "", result.page, pages, bodyPages) : null;
+      // Câu có ở nhiều trang: nhớ từng trang và chỗ tô ở trang đó, để sinh viên mở từng trang mà đối chiếu.
+      const page_matches = result.pages?.map((page) => ({ page, ranges: safeLocate(cell.quote_original ?? "", page, pages, bodyPages) }));
       return {
         ...cell,
         ai_page,
@@ -258,6 +261,7 @@ export function verifyCells(cells: AiCell[], pages: PdfPage[]): AiCell[] {
         review_reason: result.review_reason,
         cites_other_source,
         quote_ranges,
+        page_matches,
       };
     } catch {
       // 5b. Kiểm tra bị lỗi giữa chừng: cần kiểm tra, không bao giờ coi là đạt.

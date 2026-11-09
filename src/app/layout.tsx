@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { StoreProvider } from "@/lib/store";
 import "./globals.css";
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <AppHeader />
           <NetworkBanner />
           {children}
+          <SiteFooter />
         </StoreProvider>
       </body>
     </html>

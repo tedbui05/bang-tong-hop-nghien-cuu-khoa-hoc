@@ -149,11 +149,11 @@ describe("lỗi 3: PDF có mật khẩu", () => {
 });
 
 describe("lỗi 4: PDF là ảnh scan, không có chữ", () => {
-  it("báo đúng câu “Bản đầu tiên chưa đọc được file scan”", async () => {
+  it("báo đúng câu “App chưa đọc được file scan”", async () => {
     const file = pdfFile(makePdf([{ image: true }, { image: true }, { image: true }]));
     const error = expectError(await read(file));
     expect(error.code).toBe("scanned");
-    expect(error.title).toBe("Bản đầu tiên chưa đọc được file scan");
+    expect(error.title).toBe("App chưa đọc được file scan");
   });
 
   it("bản scan có một trang bìa chữ vẫn tính là scan", async () => {

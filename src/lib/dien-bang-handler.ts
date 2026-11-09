@@ -35,7 +35,7 @@ export async function handleDienBang(request: Request, deps: HandlerDeps): Promi
   const input = readExtractBody(body);
   if (!input) {
     return json(
-      { ok: false, error: { code: "bad_request", title: "Dữ liệu gửi lên không hợp lệ", detail: "Hãy tải lại trang rồi thử lại.", retry: false } },
+      { ok: false, error: { code: "bad_request", title: "Chưa gửi được bài cho AI", detail: "Hãy tải lại trang rồi thử lại.", retry: false } },
       400,
     );
   }

@@ -245,7 +245,7 @@ function ReviewSession() {
               {filledByText(session.paper.filled_by)}
             </p>
           ) : null}
-          {isSample ? <p className="small-note">Đây là bài mẫu của bản xem thử, chưa qua AI. Nhãn kiểm tra được gán tay.</p> : null}
+          {isSample ? <p className="small-note">Đây là bài minh hoạ có sẵn trong app, chưa qua AI. Nhãn kiểm tra được gán tay.</p> : null}
           {othersWaiting > 0 ? <p className="small-note">Sau bài này còn {othersWaiting} bài chờ duyệt.</p> : null}
         </div>
 

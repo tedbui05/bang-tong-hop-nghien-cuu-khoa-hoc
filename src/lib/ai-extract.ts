@@ -119,15 +119,15 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
     case "bad_format":
       return {
         code,
-        title: "AI trả lời sai định dạng",
-        detail: "App đã hỏi lại một lần nhưng AI vẫn trả lời sai khuôn, nên chưa điền được bảng. Hãy thử lại sau.",
+        title: "Chưa đọc được câu trả lời của AI",
+        detail: "App đã hỏi lại một lần nhưng câu trả lời của AI vẫn không đúng cách app cần, nên chưa điền được bảng. Hãy thử lại sau.",
         retry: true,
       };
     case "too_long":
       return {
         code,
         title: "Bài quá dài",
-        detail: `Sau khi bỏ phần tài liệu tham khảo, bài vẫn còn ${chars.toLocaleString("vi-VN")} ký tự, quá giới hạn ${MAX_PAPER_CHARS.toLocaleString("vi-VN")} ký tự (giới hạn tạm của bản thử). Hãy tải riêng bài báo bạn cần, không tải cả sách hay luận án.`,
+        detail: `Sau khi bỏ phần tài liệu tham khảo, bài vẫn còn ${chars.toLocaleString("vi-VN")} ký tự, quá giới hạn ${MAX_PAPER_CHARS.toLocaleString("vi-VN")} ký tự (giới hạn hiện tại của app). Hãy tải riêng bài báo bạn cần, không tải cả sách hay luận án.`,
         retry: false,
       };
     case "no_text":

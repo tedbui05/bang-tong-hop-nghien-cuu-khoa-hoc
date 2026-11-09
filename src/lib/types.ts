@@ -24,6 +24,9 @@ export type AiCell = {
   // Vị trí câu trích trong chữ gốc của trang (đã khớp hoặc đã sửa số trang), để tô vàng khi xem bằng chứng.
   // Câu vắt qua hai trang thì có hai đoạn. null: không xác định được vị trí.
   quote_ranges?: TextRange[] | null;
+  // Ô "cần kiểm tra" vì câu có ở nhiều trang: các trang tìm thấy và vị trí để tô vàng ở từng trang.
+  // Chỉ để hiển thị, không đổi kết quả kiểm tra. ranges null: không xác định được vị trí ở trang đó.
+  page_matches?: { page: number; ranges: TextRange[] | null }[];
 };
 
 // Một đoạn chữ trong trang, tính theo vị trí ký tự trong chữ đọc từ PDF (pdf-read.ts).
@@ -117,6 +120,12 @@ export type SheetTable = {
 
 export type LabelKey = CheckResult | "not_found" | "manual";
 
+// "trang 1 và trang 3", "trang 1, trang 3 và trang 5".
+export function joinPages(pages: number[]): string {
+  const names = pages.map((page) => `trang ${page}`);
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} và ${names[names.length - 1]}` : (names[0] ?? "");
+}
+
 export function getReviewReason(cell: AiCell): string {
   if (cell.review_reason === "too_short") {
     return "Câu trích quá ngắn nên chưa đủ căn cứ. Hãy đối chiếu với bài gốc.";
@@ -125,7 +134,9 @@ export function getReviewReason(cell: AiCell): string {
     return "App chưa kiểm tra được câu này do có lỗi giữa chừng. Hãy đối chiếu với bài gốc.";
   }
   if (cell.review_reason === "multi_page") {
-    return "Câu này có ở nhiều trang nên chưa biết đúng trang nào. Hãy đối chiếu với bài gốc.";
+    const pages = cell.page_matches?.map((match) => match.page) ?? [];
+    const where = pages.length > 1 ? `ở ${joinPages(pages)}` : "ở nhiều trang";
+    return `Câu này có ${where} nên chưa biết đúng trang nào. Hãy đối chiếu với bài gốc.`;
   }
   return "App không thấy nguyên văn câu này trong bài. Hãy đối chiếu với bài gốc.";
 }

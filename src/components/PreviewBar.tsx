@@ -1,18 +1,11 @@
 import Link from "next/link";
 import { PREVIEW_STATES, type PreviewState } from "@/lib/preview-state";
-import { ResetDataButton } from "./ResetDataButton";
 import { SampleNote } from "./SampleNote";
 
-// Dòng nhắc Bảng mẫu là dữ liệu minh hoạ và nút đặt lại dữ liệu mẫu.
-// Phần "Xem thử trạng thái" chỉ để người làm app xem các màn hình, nên chỉ hiện khi chạy `npm run dev`.
+// Dòng nhắc Bảng mẫu là dữ liệu minh hoạ. Phần "Xem thử trạng thái" chỉ để người làm app xem các màn hình,
+// nên chỉ hiện khi chạy `npm run dev`. Nút xoá toàn bộ dữ liệu nằm ở chân trang (SiteFooter, chân bảng).
 export function PreviewBar({ path, state }: { path: string; state: PreviewState }) {
-  return (
-    <aside className="preview-bar" aria-label="Dữ liệu mẫu">
-      <SampleNote />
-      <ResetDataButton />
-      {process.env.NODE_ENV === "development" ? <PreviewStates path={path} state={state} /> : null}
-    </aside>
-  );
+  return <SampleNote extra={process.env.NODE_ENV === "development" ? <PreviewStates path={path} state={state} /> : null} />;
 }
 
 function PreviewStates({ path, state }: { path: string; state: PreviewState }) {

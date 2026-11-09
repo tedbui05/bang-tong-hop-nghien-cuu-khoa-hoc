@@ -90,6 +90,7 @@ describe("kết quả kiểm tra một câu trích", () => {
       check: "needs_review",
       page: 1,
       review_reason: "multi_page",
+      pages: [1, 2, 3],
     });
   });
 
@@ -352,6 +353,26 @@ describe("kiểm tra các ô của một bài", () => {
     expect(cell.page).toBe(2);
     expect(cell.ai_page).toBe(3);
     expect(cell.quote_original).toBe(quote);
+  });
+
+  it("câu có ở nhiều trang: nhớ từng trang và chỗ tô ở trang đó, nhãn vẫn là cần kiểm tra", () => {
+    const quote = "Paragraph 3 discusses reading in rural schools";
+    const twice = pages(body("reading"), body("method"), `${body("reading")}`, "References\nSmith J. (2020).");
+    const [cell] = verifyCells([proposed(quote, 3)], twice);
+    expect(cell.check).toBe("needs_review");
+    expect(cell.review_reason).toBe("multi_page");
+    expect(cell.quote_ranges).toBeNull();
+    expect(cell.page_matches?.map((match) => match.page)).toEqual([1, 3]);
+    for (const match of cell.page_matches ?? []) {
+      const range = match.ranges?.[0];
+      expect(range?.page).toBe(match.page);
+      expect(twice[match.page - 1].text.slice(range!.start, range!.end)).toBe(quote);
+    }
+  });
+
+  it("chỉ có ở một trang thì không có page_matches", () => {
+    const [cell] = verifyCells([proposed("We surveyed 412 households in three provinces", 2)], paper);
+    expect(cell.page_matches).toBeUndefined();
   });
 
   it("câu trong phần tài liệu tham khảo đã bị cắt: cần kiểm tra", () => {

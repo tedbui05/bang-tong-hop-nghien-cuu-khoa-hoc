@@ -77,7 +77,7 @@ export function limitError(code: "not_signed_in" | "limit_user" | "limit_total",
       return {
         code,
         title: "Bạn đã dùng hết lượt AI hôm nay",
-        detail: `Mỗi người được gửi ${limits?.perUser ?? DEFAULT_USER_DAILY_LIMIT} bài cho AI mỗi ngày (giới hạn tạm của bản thử). Bài vẫn nằm trong hàng chờ, hãy bấm Thử lại vào ngày mai.`,
+        detail: `Mỗi người được gửi ${limits?.perUser ?? DEFAULT_USER_DAILY_LIMIT} bài cho AI mỗi ngày (giới hạn hiện tại của app). Bài vẫn nằm trong hàng chờ, hãy bấm Thử lại vào ngày mai.`,
         retry: true,
       };
     case "limit_total":

@@ -174,6 +174,8 @@ export async function renderPdfPage(
 
   const layer = document.createElement("div");
   layer.className = "textLayer";
+  // Chữ gốc của bài: không cho trình duyệt tự dịch.
+  layer.setAttribute("translate", "no");
   container.replaceChildren(canvas, layer);
   container.style.width = `${viewport.width}px`;
   container.style.height = `${viewport.height}px`;

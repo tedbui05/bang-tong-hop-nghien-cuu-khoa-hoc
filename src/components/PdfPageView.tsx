@@ -51,6 +51,8 @@ export function PdfPageView({ doc, paperId, page, scale, ranges, expectedText, o
     <div
       ref={box}
       className="pdf-page"
+      // Lớp chữ của trang là chữ gốc của bài: không để trình duyệt tự dịch, kẻo lệch chỗ tô vàng.
+      translate="no"
       style={placeholder ? { width: placeholder.width * scale, height: placeholder.height * scale } : undefined}
       aria-label={`Trang ${page} của file PDF`}
       role="group"

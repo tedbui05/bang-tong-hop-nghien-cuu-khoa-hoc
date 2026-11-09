@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   if (sampleAnswersEnabled()) {
     const body = (await request.json().catch(() => null)) as { fileName?: unknown } | null;
     const input = readExtractBody(body);
-    if (!input) return Response.json({ ok: false, error: { code: "bad_request", title: "Dữ liệu gửi lên không hợp lệ", detail: "Hãy tải lại trang rồi thử lại.", retry: false } }, { status: 400 });
+    if (!input) return Response.json({ ok: false, error: { code: "bad_request", title: "Chưa gửi được bài cho AI", detail: "Hãy tải lại trang rồi thử lại.", retry: false } }, { status: 400 });
     const ids = input.columns.filter((column) => column.kind === "content").map((column) => column.id);
     return Response.json(await sampleAnswer(typeof body?.fileName === "string" ? body.fileName : "", ids));
   }

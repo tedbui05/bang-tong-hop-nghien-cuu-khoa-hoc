@@ -1,6 +1,6 @@
 // Xem bằng chứng của một ô: mở trang nào, tô đoạn nào, ghi chú gì. Code thường, dùng kết quả của verify-quote.ts.
 import { STATUS_LABELS } from "./sheet";
-import { getLabelKey, type AiCell, type LabelKey, type TextRange } from "./types";
+import { getLabelKey, joinPages, type AiCell, type LabelKey, type TextRange } from "./types";
 
 export const UNKNOWN_POSITION_NOTE = "Không xác định được vị trí câu trích, hãy tự tìm trong trang";
 export const NOT_MARKED_NOTE = "Không tô được vị trí câu trích trong trang này, hãy tự tìm trong trang";
@@ -17,9 +17,22 @@ export type EvidenceView = {
   note: string | null;
 };
 
-export function evidenceView(cell: AiCell): EvidenceView {
+// Câu có ở nhiều trang: ghi chú nói rõ các trang, để sinh viên biết còn trang khác phải xem.
+export function multiPageNote(pages: number[]): string {
+  return `Câu này có ở ${joinPages(pages)}, chưa biết trang nào đúng. Hãy xem từng trang`;
+}
+
+// page: trang muốn mở, chỉ dùng cho ô "cần kiểm tra" vì câu có ở nhiều trang (sinh viên bấm "Xem trang 3").
+export function evidenceView(cell: AiCell, page?: number): EvidenceView {
   const label = getLabelKey(cell);
   if (label === "not_found" || label === "manual" || !cell.quote_original) return { label, page: null, ranges: NO_RANGES, note: null };
+  const matches = label === "needs_review" ? (cell.page_matches ?? []) : [];
+  if (matches.length > 1) {
+    // Mở trang được chọn; mặc định là trang AI ghi nếu câu có ở đó, không thì trang đầu tiên tìm thấy. Tô vàng ở trang đó.
+    const aiPage = cell.ai_page ?? cell.page;
+    const match = matches.find((item) => item.page === page) ?? matches.find((item) => item.page === aiPage) ?? matches[0];
+    return { label, page: match.page, ranges: match.ranges ?? NO_RANGES, note: multiPageNote(matches.map((item) => item.page)) };
+  }
   // "Cần kiểm tra": mở trang AI ghi, không tô, vì không biết câu nằm ở đâu.
   if (label === "needs_review") return { label, page: cell.ai_page ?? cell.page, ranges: NO_RANGES, note: UNKNOWN_POSITION_NOTE };
   // "Đã sửa số trang": cell.page đã là trang code tìm thấy.
@@ -28,8 +41,8 @@ export function evidenceView(cell: AiCell): EvidenceView {
 }
 
 // Nhãn bằng chứng nhỏ, ví dụ "tr. 9 · đã khớp". Ô "không tìm thấy" và ô tự điền không có nhãn này.
-export function evidenceLabel(cell: AiCell): string | null {
-  const view = evidenceView(cell);
+export function evidenceLabel(cell: AiCell, page?: number): string | null {
+  const view = evidenceView(cell, page);
   if (view.page === null) return null;
   return `tr. ${view.page} · ${STATUS_LABELS[view.label]}`;
 }

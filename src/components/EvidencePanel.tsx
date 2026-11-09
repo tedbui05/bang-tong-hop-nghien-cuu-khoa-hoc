@@ -7,7 +7,7 @@ import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type CellTarget } from "@/lib/store";
 import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
 import { filledByText, getLabelKey, getReviewReason, isCellEdited, type Highlight, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
-import { EvidenceChip, type EvidencePreviewApi } from "./EvidencePreview";
+import { EvidenceChip, PageMatchButtons, type EvidencePreviewApi } from "./EvidencePreview";
 import { HighlightText, useTextSelection } from "./HighlightText";
 import { MarkdownView } from "./MarkdownView";
 import { StatusIcon } from "./StatusBadge";
@@ -250,6 +250,7 @@ function EvidenceContent({ selection, preview }: { selection: EvidenceSelection;
             ) : null}
           </div>
           {showTranslation && cell.quote_vi ? <p className="evidence-panel__translation">{cell.quote_vi}</p> : null}
+          <PageMatchButtons target={{ paper, cell, columnName: column.name }} preview={preview} />
         </Card>
       ) : null}
 

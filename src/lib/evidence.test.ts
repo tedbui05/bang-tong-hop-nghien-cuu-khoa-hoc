@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evidenceLabel, evidenceView, NOT_MARKED_NOTE, splitByRanges, UNKNOWN_POSITION_NOTE } from "./evidence";
-import type { AiCell } from "./types";
+import { evidenceLabel, evidenceView, multiPageNote, NOT_MARKED_NOTE, splitByRanges, UNKNOWN_POSITION_NOTE } from "./evidence";
+import { getReviewReason, type AiCell } from "./types";
 
 const base: AiCell = {
   column: "ket-qua",
@@ -30,6 +30,42 @@ describe("xem bằng chứng của một ô", () => {
     const cell = { ...base, check: "needs_review" as const, page: 9, ai_page: 9, quote_ranges: null };
     expect(evidenceView(cell)).toEqual({ label: "needs_review", page: 9, ranges: [], note: UNKNOWN_POSITION_NOTE });
     expect(evidenceLabel(cell)).toBe("tr. 9 · cần kiểm tra");
+  });
+
+  describe("cần kiểm tra vì câu có ở nhiều trang", () => {
+    const multi: AiCell = {
+      ...base,
+      page: 3,
+      ai_page: 3,
+      check: "needs_review",
+      review_reason: "multi_page",
+      quote_ranges: null,
+      page_matches: [
+        { page: 1, ranges: [{ page: 1, start: 5, end: 30 }] },
+        { page: 3, ranges: [{ page: 3, start: 40, end: 65 }] },
+      ],
+    };
+
+    it("mặc định mở trang AI ghi, có tô vàng, ghi chú nói rõ các trang", () => {
+      expect(evidenceView(multi)).toEqual({ label: "needs_review", page: 3, ranges: [{ page: 3, start: 40, end: 65 }], note: multiPageNote([1, 3]) });
+      expect(multiPageNote([1, 3])).toBe("Câu này có ở trang 1 và trang 3, chưa biết trang nào đúng. Hãy xem từng trang");
+    });
+
+    it("mở được từng trang, mỗi trang tô đúng chỗ của trang đó", () => {
+      expect(evidenceView(multi, 1)).toMatchObject({ page: 1, ranges: [{ page: 1, start: 5, end: 30 }] });
+      expect(evidenceLabel(multi, 1)).toBe("tr. 1 · cần kiểm tra");
+      // Trang không có câu thì về trang mặc định.
+      expect(evidenceView(multi, 7).page).toBe(3);
+    });
+
+    it("lý do ghi rõ các trang", () => {
+      expect(getReviewReason(multi)).toBe("Câu này có ở trang 1 và trang 3 nên chưa biết đúng trang nào. Hãy đối chiếu với bài gốc.");
+      expect(getReviewReason({ ...multi, page_matches: undefined })).toBe("Câu này có ở nhiều trang nên chưa biết đúng trang nào. Hãy đối chiếu với bài gốc.");
+    });
+
+    it("trang AI ghi không có câu thì mở trang đầu tiên tìm thấy", () => {
+      expect(evidenceView({ ...multi, ai_page: 5, page: 5 }).page).toBe(1);
+    });
   });
 
   it("đã khớp nhưng không tô được: vẫn mở trang, có lời nhắc", () => {

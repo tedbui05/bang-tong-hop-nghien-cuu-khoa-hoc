@@ -107,9 +107,9 @@ describe("xử lý một bài trong hàng chờ", () => {
   });
 
   it("file PDF lỗi: báo lỗi của file, không gọi AI", async () => {
-    const d = deps(answer(), async () => ({ ok: false, error: { code: "scanned", title: "Bản đầu tiên chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc." } }));
+    const d = deps(answer(), async () => ({ ok: false, error: { code: "scanned", title: "App chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc." } }));
     const result = await processPaper(input(), d);
-    expect(result).toEqual({ ok: false, error: { title: "Bản đầu tiên chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc.", retry: false }, stored: null });
+    expect(result).toEqual({ ok: false, error: { title: "App chưa đọc được file scan", detail: "Hãy tìm bản PDF gốc.", retry: false }, stored: null });
     expect(d.calls).toHaveLength(0);
   });
 

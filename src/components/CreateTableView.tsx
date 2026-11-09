@@ -8,6 +8,7 @@ import {
   checkTableName,
   isOwnColumn,
   hasContentColumn,
+  insertBeforeOwnColumns,
   moveColumn,
   newContentColumn,
   removedInfoColumns,
@@ -78,7 +79,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
 
   function addBlankColumn() {
     const column = newContentColumn("", "");
-    setColumns((current) => [...current, column]);
+    setColumns((current) => insertBeforeOwnColumns(current, column));
     setFocusId(column.id);
     setFormError(null);
   }
@@ -256,7 +257,7 @@ function CreateTableForm({ state }: { state: PreviewState }) {
                 key={column.id}
                 type="button"
                 className="link-button"
-                onClick={() => setColumns((current) => [...current, column])}
+                onClick={() => setColumns((current) => insertBeforeOwnColumns(current, column))}
               >
                 Thêm lại “{column.name}”
               </button>

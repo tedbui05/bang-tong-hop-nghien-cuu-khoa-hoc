@@ -4,7 +4,7 @@ import { useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "re
 import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
 import type { PdfPage } from "@/lib/pdf-read";
 import { getLabelKey, getReviewReason, type Paper, type ReviewCell } from "@/lib/types";
-import { EvidenceChip, type EvidencePreviewApi } from "./EvidencePreview";
+import { EvidenceChip, PageMatchButtons, type EvidencePreviewApi } from "./EvidencePreview";
 import { StatusBadge } from "./StatusBadge";
 
 type Props = {
@@ -201,6 +201,7 @@ export function ReviewCard({ cell, columnName, question, paper, pages, preview, 
           <button type="button" className="link-button review-card__page-button" onClick={onShowPage}>
             Xem đoạn gốc trong trang {flagged ? cell.ai_page ?? cell.page : cell.page}
           </button>
+          <PageMatchButtons target={{ paper, cell, columnName, pages }} preview={preview} />
 
           {label === "page_corrected" ? (
             <p className="small-note">

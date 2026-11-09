@@ -16,6 +16,8 @@ import { FormatBar, useCellFormatting } from "./FormatBar";
 import { StatusIcon } from "./StatusBadge";
 import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
 import { SkeletonLines, StateMessage } from "./StateMessage";
+import { useScrollHint } from "./useScrollHint";
+import { ResetDataButton } from "./ResetDataButton";
 
 const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", "not_found", "manual"];
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
@@ -108,6 +110,11 @@ function Sheet({ table }: { table: SheetTable }) {
   const router = useRouter();
   const { tables, setActiveTable, savedTitle, saveFailed, cloud, syncNow, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
   const { papers, columns } = table;
+  // Điện thoại: hai hàng này cuộn ngang, có vệt mờ ở mép phải khi còn nội dung.
+  const statsRow = useRef<HTMLDivElement | null>(null);
+  const toolbarRow = useRef<HTMLDivElement | null>(null);
+  useScrollHint(statsRow);
+  useScrollHint(toolbarRow);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -225,7 +232,7 @@ function Sheet({ table }: { table: SheetTable }) {
         </div>
       </header>
 
-      <div className="sheet-stats" role="group" aria-label="Tổng quan, bấm để lọc">
+      <div ref={statsRow} className="sheet-stats" role="group" aria-label="Tổng quan, bấm để lọc">
         <button type="button" className="sheet-stat" aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
           <span className="sheet-stat__number">{papers.length}</span>
           <span className="sheet-stat__label">Tổng số bài</span>
@@ -269,7 +276,7 @@ function Sheet({ table }: { table: SheetTable }) {
         </div>
       ) : null}
 
-      <div className="sheet-toolbar" role="group" aria-label="Công cụ của bảng">
+      <div ref={toolbarRow} className="sheet-toolbar" role="group" aria-label="Công cụ của bảng">
         <div className="sheet-toolbar__search">
           <label htmlFor="tim-kiem" className="visually-hidden">
             Tìm trong toàn bảng
@@ -476,9 +483,10 @@ function Sheet({ table }: { table: SheetTable }) {
         <span>
           Đang hiện {visibleCount}/{papers.length} bài
         </span>
-        <span className={saveFailed || cloud === "offline" || cloud === "error" ? "sheet-footer__error" : undefined} role="status">
+        <span className={`sheet-footer__status${saveFailed || cloud === "offline" || cloud === "error" ? " sheet-footer__error" : ""}`} role="status">
           {saveText(saveFailed, cloud)}
         </span>
+        <ResetDataButton />
       </footer>
 
       {menu && menuColumn ? (

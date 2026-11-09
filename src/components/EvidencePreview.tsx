@@ -8,12 +8,13 @@ import { fileHash, loadPages, savePdf } from "@/lib/paper-files";
 import type { PdfPage } from "@/lib/pdf-read";
 import { forgetPaperPdf, openPaperPdf, pageSize } from "@/lib/pdf-view";
 import { STATUS_LABELS } from "@/lib/sheet";
-import type { AiCell, Paper } from "@/lib/types";
+import { getLabelKey, type AiCell, type Paper } from "@/lib/types";
 import { PageTextView } from "./PageTextView";
 import { PdfPageView } from "./PdfPageView";
 import { StatusIcon } from "./StatusBadge";
 
-export type EvidenceTarget = { paper: Paper; cell: AiCell; columnName: string; pages?: PdfPage[] | null };
+// page: trang muốn mở, chỉ dùng cho ô "cần kiểm tra" vì câu có ở nhiều trang. Bỏ trống thì mở trang mặc định.
+export type EvidenceTarget = { paper: Paper; cell: AiCell; columnName: string; pages?: PdfPage[] | null; page?: number };
 
 type Mode = "hover" | "focus" | "click";
 type PreviewState = { target: EvidenceTarget; anchor: HTMLElement; mode: Mode; fullscreen: boolean };
@@ -160,6 +161,33 @@ export function EvidenceChip({ target, preview }: { target: EvidenceTarget; prev
   );
 }
 
+// Ô "cần kiểm tra" vì câu có ở nhiều trang: mỗi trang một nút, mở khung xem đúng trang đó, có tô vàng câu trích.
+export function PageMatchButtons({ target, preview }: { target: EvidenceTarget; preview: EvidencePreviewApi }) {
+  const matches = target.cell.page_matches ?? [];
+  if (matches.length < 2 || getLabelKey(target.cell) !== "needs_review") return null;
+  const openPage = preview.state?.target.cell === target.cell ? (preview.state.target.page ?? null) : null;
+  return (
+    <div className="page-matches" role="group" aria-label="Mở từng trang có câu trích này">
+      {matches.map((match) => (
+        <button
+          key={match.page}
+          type="button"
+          className="link-button page-matches__button"
+          aria-label={`Xem trang ${match.page} trong file PDF, có tô vàng câu trích`}
+          aria-haspopup="dialog"
+          aria-expanded={openPage === match.page}
+          onClick={(event) => {
+            event.stopPropagation();
+            preview.toggle({ ...target, page: match.page }, event.currentTarget);
+          }}
+        >
+          Xem trang {match.page}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Dùng chung cho nhãn trong bảng (không phải React).
 export function chipBlur(event: FocusEvent<HTMLElement> | globalThis.FocusEvent, preview: EvidencePreviewApi) {
   const next = event.relatedTarget as Node | null;
@@ -226,7 +254,7 @@ function usePaperPdf(target: EvidenceTarget) {
 
 function EvidencePopover({ state, preview }: { state: PreviewState; preview: EvidencePreviewApi }) {
   const { target, anchor } = state;
-  const view = evidenceView(target.cell);
+  const view = evidenceView(target.cell, target.page);
   const { loaded, reload } = usePaperPdf(target);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState<React.CSSProperties>({});
@@ -355,7 +383,7 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
         <div className="ev-pop__title">
           <span className={`ev-chip ev-chip--${view.label} ev-chip--static`}>
             <StatusIcon label={view.label} />
-            {evidenceLabel(target.cell)}
+            {evidenceLabel(target.cell, target.page)}
           </span>
           <span className="ev-pop__column">{target.columnName}</span>
         </div>
@@ -440,7 +468,7 @@ function pageTextOf(pages: PdfPage[] | null, page: number): string | undefined {
 
 // Không mở được trang PDF (file hỏng hoặc lỗi khi đọc): báo lỗi, vẫn cho xem chữ của trang nếu còn.
 function PdfError({ pages, target }: { pages: PdfPage[] | null; target: EvidenceTarget }) {
-  const view = evidenceView(target.cell);
+  const view = evidenceView(target.cell, target.page);
   return (
     <div className="ev-pop__missing" role="alert">
       <p className="ev-pop__note">
@@ -475,7 +503,7 @@ function ZoomButtons({ zoom, onZoom }: { zoom: number; onZoom: (zoom: number) =>
 
 // Không còn file PDF trong trình duyệt: hiện chữ của trang (nếu còn), câu trích tô vàng, kèm nút tải lại file.
 function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pages: PdfPage[] | null; onReloaded: () => void }) {
-  const view = evidenceView(target.cell);
+  const view = evidenceView(target.cell, target.page);
   const input = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -520,7 +548,7 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
     body = (
       <>
         <p className="ev-pop__note">
-          File PDF gốc và chữ của bài không còn trong trình duyệt này{target.paper.filled_by ? "" : " (bài minh hoạ của bản xem thử)"}. Câu trích:
+          File PDF gốc và chữ của bài không còn trong trình duyệt này{target.paper.filled_by ? "" : " (bài minh hoạ có sẵn trong app)"}. Câu trích:
         </p>
         <blockquote className="ev-pop__quote source-text" lang={target.paper.language_code} translate="no">
           {target.cell.quote_original}
@@ -560,7 +588,7 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
 
 // Toàn màn hình: cả bài, mở sẵn ở trang có câu trích, vẫn tô vàng, phóng to thu nhỏ, chuyển trang, Esc để thoát.
 function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () => void }) {
-  const view = evidenceView(target.cell);
+  const view = evidenceView(target.cell, target.page);
   const { loaded } = usePaperPdf(target);
   const dialog = useRef<HTMLDialogElement | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
@@ -683,7 +711,7 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
         <div className="pdf-full__title">
           <span className={`ev-chip ev-chip--${view.label} ev-chip--static`}>
             <StatusIcon label={view.label} />
-            {evidenceLabel(target.cell) ?? STATUS_LABELS[view.label]}
+            {evidenceLabel(target.cell, target.page) ?? STATUS_LABELS[view.label]}
           </span>
           <span className="source-text pdf-full__paper" lang={target.paper.language_code} translate="no">
             {target.paper.info.title}

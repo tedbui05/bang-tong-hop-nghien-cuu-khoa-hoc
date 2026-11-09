@@ -39,8 +39,8 @@ export function ResetDataButton() {
 
   return (
     <>
-      <button type="button" className="link-button preview-reset" onClick={() => setOpen(true)}>
-        Đặt lại dữ liệu mẫu
+      <button type="button" className="link-button data-reset" onClick={() => setOpen(true)}>
+        Xoá toàn bộ dữ liệu của tôi
       </button>
       <dialog ref={dialog} className="confirm-dialog" aria-labelledby="dat-lai-tieu-de" aria-describedby="dat-lai-mo-ta" onClose={close}>
         <h2 id="dat-lai-tieu-de">Xoá hết dữ liệu của bạn?</h2>

@@ -96,6 +96,13 @@ export function checkTableName(name: string, tableNames: string[]): string | nul
 }
 
 // Đưa cột về vị trí mới. Tên bài luôn đứng đầu nên không cột nào được chen lên trước nó.
+// Cột mới (nội dung hoặc thông tin bài) chèn vào trước cột Nhãn, Ghi chú đầu tiên, để nằm cùng các cột AI điền.
+// Bảng không có hai cột đó thì để cuối.
+export function insertBeforeOwnColumns(columns: TableColumn[], column: TableColumn): TableColumn[] {
+  const at = columns.findIndex(isOwnColumn);
+  return at === -1 ? [...columns, column] : [...columns.slice(0, at), column, ...columns.slice(at)];
+}
+
 export function moveColumn(columns: TableColumn[], id: string, offset: number): TableColumn[] {
   const from = columns.findIndex((column) => column.id === id);
   const to = from + offset;

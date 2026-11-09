@@ -76,7 +76,7 @@ export function pdfError(code: PdfErrorCode, fileName: string, size = 0): PdfErr
     case "scanned":
       return {
         code,
-        title: "Bản đầu tiên chưa đọc được file scan",
+        title: "App chưa đọc được file scan",
         detail:
           "File này là ảnh chụp các trang nên không có chữ để lấy ra. Hãy tìm bản PDF gốc trên trang của tạp chí, loại bôi đen được chữ.",
       };
