@@ -1,4 +1,5 @@
-// Kết quả kiểm tra câu trích. Ở bản xem thử, giá trị này được gán tay trong dữ liệu mẫu.
+// Kết quả kiểm tra câu trích, do src/lib/verify-quote.ts tính bằng code thường.
+// Dữ liệu mẫu của bản xem thử vẫn gán tay giá trị này.
 export type CheckResult = "verified" | "page_corrected" | "needs_review";
 
 import type { FillKey, TagColorKey, TextColorKey } from "./palette";
@@ -15,8 +16,11 @@ export type AiCell = {
   status: "proposed" | "not_found" | "manual";
   check: CheckResult | null;
   ai_page: number | null;
-  // Vì sao ô bị đánh dấu "cần kiểm tra".
-  review_reason?: "too_short" | "multi_page";
+  // Vì sao ô bị đánh dấu "cần kiểm tra". Không có thì là "không thấy câu này trong bài".
+  // "check_failed": việc kiểm tra bị lỗi giữa chừng.
+  review_reason?: "too_short" | "multi_page" | "check_failed";
+  // Câu trích có dấu hiệu dẫn nguồn khác. Là cảnh báo thêm, không thay thế kết quả kiểm tra.
+  cites_other_source?: boolean;
 };
 
 export type ReviewStatus = "pending" | "confirmed" | "edited";
@@ -94,6 +98,9 @@ export type LabelKey = CheckResult | "not_found" | "manual";
 export function getReviewReason(cell: AiCell): string {
   if (cell.review_reason === "too_short") {
     return "Câu trích quá ngắn nên chưa đủ căn cứ. Hãy đối chiếu với bài gốc.";
+  }
+  if (cell.review_reason === "check_failed") {
+    return "App chưa kiểm tra được câu này do có lỗi giữa chừng. Hãy đối chiếu với bài gốc.";
   }
   if (cell.review_reason === "multi_page") {
     return "Câu này có ở nhiều trang nên chưa biết đúng trang nào. Hãy đối chiếu với bài gốc.";

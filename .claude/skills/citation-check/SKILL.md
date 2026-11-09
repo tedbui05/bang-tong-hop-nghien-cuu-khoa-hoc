@@ -19,6 +19,9 @@ description: Quy tắc trích xuất và kiểm tra trích dẫn. Dùng khi vi�
 ## Kiểm tra bằng code (không dùng AI)
 1. Ô not_found: bỏ qua kiểm tra, không tính là needs_review.
 2. Chuẩn hóa cả quote_original và văn bản bài theo cùng một cách: Unicode NFKC, chữ thường, gộp khoảng trắng, nối từ bị ngắt bằng gạch nối cuối dòng. Chỉ chuẩn hóa để so sánh, câu hiển thị và câu lưu vào bảng luôn là bản gốc.
+   - Thêm (người dùng đồng ý ngày 9/11/2026): coi các kiểu ngoặc kép và gạch là một; bỏ khoảng trắng cạnh chữ Hán và giữa hai ký tự không phải chữ cái.
+   - Văn bản bài có 4 bản để tìm: giữ hoặc bỏ gạch nối cuối dòng, giữ hoặc bỏ số chỉ dẫn dính vào chữ ("GI.10", "Pearson29"). Khớp một bản là khớp. Không bao giờ bỏ con số thật ("13%", "442 firms", "14.6").
+   - Code: `src/lib/verify-quote.ts`, giải thích ở `docs/kiem-tra-cau-trich.md`.
 3. Quote sau chuẩn hóa dưới 15 ký tự: needs_review, dù tìm thấy ở đâu. Số 15 là con số tạm, sẽ chỉnh sau buổi thử thật.
 4. Tìm quote trong từng trang và ở chỗ nối giữa cuối trang này với đầu trang sau.
    - Ghép hai trang trước rồi mới chuẩn hóa, để từ bị ngắt ở cuối trang vẫn được nối.
@@ -42,3 +45,5 @@ description: Quy tắc trích xuất và kiểm tra trích dẫn. Dùng khi vi�
 - Chữ dính "fi" (NFKC).
 - Tiếng Việt có dấu tổ hợp, vẫn đúng sau NFKC.
 - Tiếng Trung, vẫn đúng sau NFKC.
+- Số chỉ dẫn dính vào chữ: câu trích không có số vẫn khớp; câu trích bỏ mất con số thật thì không khớp.
+- Chữ thật từ 3 bài trong samples/: câu có thật, câu sửa một chữ, câu trong phần tài liệu tham khảo đã bị cắt.
