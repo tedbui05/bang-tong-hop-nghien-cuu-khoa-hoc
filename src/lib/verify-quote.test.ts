@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PdfPage } from "./pdf-read";
 import type { AiCell } from "./types";
 import { CITED_SOURCE_WARNING } from "./cited-source";
-import { normalizeForMatch, verifyCells, verifyQuote } from "./verify-quote";
+import { findRepeatedEdgeLines, normalizeForMatch, verifyCells, verifyQuote } from "./verify-quote";
 
 const pages = (...texts: string[]): PdfPage[] => texts.map((text, i) => ({ page: i + 1, text }));
 
@@ -244,6 +244,84 @@ describe("số chỉ dẫn nhỏ dính vào chữ", () => {
     expect(verifyQuote("CO2 emissions fell by 13% in 2020", 1, text).check).toBe("verified");
     expect(verifyQuote("CO2 emissions fell by % in 2020", 1, text).check).toBe("needs_review");
     expect(verifyQuote("an annual decline of 14.% overall", 1, text).check).toBe("needs_review");
+  });
+});
+
+// Dòng đầu trang, chân trang lặp lại (tên tạp chí, số trang) chen giữa câu vắt qua hai trang.
+describe("dòng đầu trang và chân trang ở chỗ nối hai trang", () => {
+  // Chữ thật từ bài tiếng Việt mẫu: dòng đầu trang có số trang dính vào theo hai kiểu "28-37 29" và "28-3730".
+  const header = (n: number) =>
+    `P.Q. Hai et al. / VNU Journal of Economics and Business, Vol. 3, No. 1 (2023) ${n % 2 ? `28-37 ${n}` : `28-37${n}`}`;
+  const vietnamese = pages(
+    `${header(29)}\nThông qua sử dụng phương pháp nghiên cứu\ntổng hợp - so sánh, các tác giả tiến hành tổng\nhợp, so sánh dữ từ các nguồn nghiên cứu trên,\nđưa ra các nhận định, đánh giá về thực trạng\nchuyển đổi số trong các doanh nghiệp logistics\nViệt Nam, từ đó đề xuất các giải pháp có tính khả\nthi nhằm thúc đẩy chuyển đổi số trong các doanh`,
+    `${header(30)}\nnghiệp logistics phát triển theo đúng tiềm năng,\nthế mạnh.\n3. Kết quả nghiên cứu`,
+    `${header(31)}\nNội dung trang tiếp theo của bài.`,
+    `${header(32)}\nNội dung một trang khác nữa.`,
+  );
+  const vietnameseQuote =
+    "Thông qua sử dụng phương pháp nghiên cứu tổng hợp - so sánh, các tác giả tiến hành tổng hợp, so sánh dữ từ các nguồn nghiên cứu trên, đưa ra các nhận định, đánh giá về thực trạng chuyển đổi số trong các doanh nghiệp logistics Việt Nam, từ đó đề xuất các giải pháp có tính khả thi nhằm thúc đẩy chuyển đổi số trong các doanh nghiệp logistics phát triển theo đúng tiềm năng, thế mạnh.";
+
+  it("câu thật của bài tiếng Việt vắt qua trang 2 sang 3, dòng đầu trang chen giữa: đã khớp", () => {
+    expect(verifyQuote(vietnameseQuote, 1, vietnamese)).toEqual({ check: "verified", page: 1 });
+  });
+
+  it("nhận ra dòng đầu trang dù số trang dính vào theo nhiều kiểu", () => {
+    expect(findRepeatedEdgeLines(vietnamese).size).toBe(1);
+  });
+
+  it("chân trang có số trang thay đổi chen giữa câu: đã khớp", () => {
+    const footer = (n: number) => `${n} Science Progress 106(3)`;
+    const english = pages(
+      `${filler("a")}\nGreen credit significantly contributes to the\n${footer(2)}`,
+      `innovative performance of green firms and limits the flow of credit.\n${footer(3)}`,
+      `${filler("b")}\n${footer(4)}`,
+      `${filler("c")}\n${footer(5)}`,
+    );
+    expect(verifyQuote("Green credit significantly contributes to the innovative performance of green firms", 1, english)).toEqual({
+      check: "verified",
+      page: 1,
+    });
+  });
+
+  it("cả chân trang lẫn đầu trang chen giữa câu: đã khớp", () => {
+    const both = (n: number, body: string) => `Journal of Tests, Vol. 3\n${body}\nPage ${n} of 9`;
+    const paper = pages(
+      both(1, `${filler("a")}\nThe treatment group received weekly reading`),
+      both(2, `sessions for six months.\n${filler("b")}`),
+      both(3, filler("c")),
+    );
+    expect(verifyQuote("The treatment group received weekly reading sessions for six months", 1, paper).check).toBe("verified");
+  });
+
+  it("không bỏ nhầm: câu nội dung thật tình cờ ở đầu 2 trang không bị coi là đầu trang", () => {
+    const paper = pages(
+      `${filler("a")}\nThe treatment group received weekly reading`,
+      `sessions for six months.\n${filler("b")}`,
+      filler("c"),
+      `sessions for six months.\n${filler("d")}`,
+    );
+    expect(findRepeatedEdgeLines(paper).size).toBe(0);
+    // Nếu dòng "sessions for six months." bị bỏ nhầm, câu vắt qua trang 1 và 2 sẽ không còn khớp.
+    expect(verifyQuote("The treatment group received weekly reading sessions for six months", 1, paper).check).toBe("verified");
+  });
+
+  it("dòng chỉ lặp ở 2 trang thì không coi là đầu trang", () => {
+    const paper = pages(`Running title\n${filler("a")}\nThe sample covers`, `Running title\nfour provinces in 2020.`, filler("c"));
+    expect(findRepeatedEdgeLines(paper).size).toBe(0);
+    expect(verifyQuote("The sample covers four provinces in 2020", 1, paper).check).toBe("needs_review");
+  });
+
+  it("bài dưới 3 trang thì không áp dụng", () => {
+    const paper = pages(`Running title 1\nThe sample covers`, `Running title 2\nfour provinces in 2020.`);
+    expect(findRepeatedEdgeLines(paper).size).toBe(0);
+  });
+
+  it("chỉ bỏ dòng đầu trang khi so ở chỗ nối, không xoá khỏi chữ của bài", () => {
+    const before = vietnamese.map((page) => page.text);
+    verifyQuote(vietnameseQuote, 1, vietnamese);
+    expect(vietnamese.map((page) => page.text)).toEqual(before);
+    // Câu nằm trong dòng đầu trang vẫn tìm thấy (ở mọi trang), không bị coi là không có.
+    expect(verifyQuote("VNU Journal of Economics and Business", 1, vietnamese).review_reason).toBe("multi_page");
   });
 });
 

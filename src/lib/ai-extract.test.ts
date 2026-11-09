@@ -1,7 +1,7 @@
 // Test phần gọi AI bằng câu trả lời giả. Không gọi Gemini thật để không tốn lượt miễn phí.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
-import { DEFAULT_PRIMARY_TIMEOUT_SECONDS, FALLBACK_TIMEOUT_SECONDS, OVERLOADED_MESSAGE, extractPaper, readExtractBody, readTimeoutSeconds, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
+import { DEFAULT_PRIMARY_TIMEOUT_SECONDS, FALLBACK_TIMEOUT_SECONDS, OVERLOADED_MESSAGE, extractPaper, readExtractBody, readTimeoutSeconds, waitingMessage, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
 import type { PdfPage } from "./pdf-read";
 import { filledByText } from "./types";
 
@@ -323,6 +323,17 @@ describe("giới hạn thời gian và nhật ký của model dự phòng", () =
     expect(readTimeoutSeconds("1", 60)).toBe(1);
     expect(readTimeoutSeconds("0.5", 60)).toBe(1);
     expect(readTimeoutSeconds("99999", 60)).toBe(600);
+  });
+
+  it("mặc định chờ model chính 150 giây (số tạm), vì bài tiếng Anh dài có thể mất hơn 2 phút", () => {
+    expect(DEFAULT_PRIMARY_TIMEOUT_SECONDS).toBe(150);
+  });
+
+  it("dòng chữ ở màn hình chờ: sau 60 giây báo bài dài để sinh viên không tưởng app bị treo", () => {
+    expect(waitingMessage(0)).toBe("AI đang đọc bài và điền bảng…");
+    expect(waitingMessage(59)).toBe("AI đang đọc bài và điền bảng…");
+    expect(waitingMessage(60)).toBe("AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút");
+    expect(waitingMessage(140)).toBe("AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút");
   });
 
   it("giới hạn thời gian chỉ áp cho model chính; model dự phòng được chờ lâu hơn", async () => {

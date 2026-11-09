@@ -60,6 +60,12 @@ const papers: { label: string; prefix: string; cases: Case[] }[] = [
         correctedPage: 2,
       },
       {
+        name: "câu vắt từ trang 2 sang trang 3, dòng đầu trang tạp chí chen giữa câu",
+        quote: "Thông qua sử dụng phương pháp nghiên cứu tổng hợp - so sánh, các tác giả tiến hành tổng hợp, so sánh dữ từ các nguồn nghiên cứu trên, đưa ra các nhận định, đánh giá về thực trạng chuyển đổi số trong các doanh nghiệp logistics Việt Nam, từ đó đề xuất các giải pháp có tính khả thi nhằm thúc đẩy chuyển đổi số trong các doanh nghiệp logistics phát triển theo đúng tiềm năng, thế mạnh.",
+        page: 2,
+        check: "verified",
+      },
+      {
         name: "sửa một chữ (định tính thành định lượng)",
         quote: "Bài viết tập trung nghiên cứu về chuyển đổi số trong các doanh nghiệp logistics Việt Nam bằng phương pháp định lượng thông qua nghiên cứu các tài liệu.",
         page: 2,

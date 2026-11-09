@@ -42,9 +42,19 @@ export type ExtractError = { code: ExtractErrorCode; title: string; detail: stri
 // primaryTimeoutMs lấy từ GEMINI_TIMEOUT_SECONDS: model chính quá thời gian này thì chuyển sang dự phòng.
 export type AiModels = { primary: string; fallback?: string | null; primaryTimeoutMs?: number; fallbackTimeoutMs?: number };
 
-// Giới hạn thời gian chờ model chính, tính bằng giây. SỐ TẠM: khoảng gấp đôi thời gian thường của một bài
-// (đo ngày 9/11/2026 với gemini-3.6-flash, xem CLAUDE.md). Đổi bằng biến môi trường GEMINI_TIMEOUT_SECONDS.
-export const DEFAULT_PRIMARY_TIMEOUT_SECONDS = 60;
+// Giới hạn thời gian chờ model chính, tính bằng giây. SỐ TẠM, đổi bằng biến môi trường GEMINI_TIMEOUT_SECONDS.
+// 150 giây vì phần lớn bài sinh viên đọc là tiếng Anh và dài: bài tiếng Anh mẫu mất 131 giây với gemini-3.6-flash
+// (9/11/2026), để thấp hơn thì đa số bài bị đẩy sang model dự phòng dễ sai hơn. Khi quá tải, Google thường
+// báo 503 ngay nên app vẫn chuyển sang dự phòng nhanh.
+export const DEFAULT_PRIMARY_TIMEOUT_SECONDS = 150;
+
+// Màn hình chờ: sau chừng này giây thì đổi dòng chữ, để sinh viên không tưởng app bị treo.
+export const LONG_WAIT_SECONDS = 60;
+
+export function waitingMessage(elapsedSeconds: number): string {
+  return elapsedSeconds < LONG_WAIT_SECONDS ? "AI đang đọc bài và điền bảng…" : "AI đang đọc bài dài, có thể mất thêm 1 đến 2 phút";
+}
+
 // Model dự phòng là đường cuối cùng nên được chờ lâu hơn.
 export const FALLBACK_TIMEOUT_SECONDS = 180;
 // Chặn giá trị vô lý: tối thiểu 1 giây, tối đa 10 phút.

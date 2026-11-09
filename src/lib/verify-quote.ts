@@ -91,6 +91,61 @@ function variants(text: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Phần 2c. Dòng đầu trang và chân trang
+// Tên tạp chí, tên tác giả, số trang in lặp lại ở đầu hoặc cuối mỗi trang. Khi một câu vắt qua hai trang,
+// dòng này chen vào giữa câu ("…trong các doanh" | "P.Q. Hai et al. / VNU Journal… 28-3730" | "nghiệp logistics…")
+// nên câu đúng không khớp. Code nhận ra các dòng này và bỏ đi, CHỈ khi so ở chỗ nối hai trang.
+// Chữ của bài và chữ hiển thị không đổi.
+// ---------------------------------------------------------------------------
+
+// Xem mấy dòng ở đầu và ở cuối mỗi trang.
+const EDGE_LINES = 3;
+// Một dòng phải lặp lại ở đầu hoặc cuối của ít nhất chừng này trang mới coi là đầu trang, chân trang.
+// Bài ít trang hơn số này thì không áp dụng.
+const MIN_EDGE_REPEATS = 3;
+
+// Khoá để so hai dòng: chuẩn hoá như câu trích, rồi coi mỗi dãy số liền nhau (kể cả số trang dính vào như
+// "28-37 29", "28-3730") là một ký hiệu "#". Nhờ vậy dòng đầu trang ở các trang khác nhau có cùng khoá.
+function edgeKey(line: string): string {
+  return normalizeForMatch(line).replace(/\d+(?:[\s\-–]*\d+)*/g, "#");
+}
+
+function nonEmptyLines(text: string): string[] {
+  return text.split("\n").filter((line) => line.trim());
+}
+
+// Trả về khoá của các dòng đầu trang, chân trang của bài.
+export function findRepeatedEdgeLines(pages: PdfPage[]): Set<string> {
+  const repeated = new Set<string>();
+  if (pages.length < MIN_EDGE_REPEATS) return repeated;
+
+  // Đếm mỗi khoá có ở đầu hoặc cuối của bao nhiêu trang (mỗi trang tính một lần).
+  const pageCount = new Map<string, number>();
+  for (const page of pages) {
+    const lines = nonEmptyLines(page.text);
+    const edges = [...lines.slice(0, EDGE_LINES), ...lines.slice(-EDGE_LINES)];
+    for (const key of new Set(edges.map(edgeKey))) pageCount.set(key, (pageCount.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of pageCount) if (key && count >= MIN_EDGE_REPEATS) repeated.add(key);
+  return repeated;
+}
+
+// Bỏ các dòng đầu trang, chân trang nằm sát mép trang: ở cuối trang (side "end") hoặc đầu trang (side "start").
+// Chỉ bỏ những dòng liền nhau tính từ mép; gặp dòng nội dung đầu tiên thì dừng.
+function trimEdge(text: string, edgeKeys: Set<string>, side: "start" | "end"): string {
+  const lines = text.split("\n");
+  const isEdge = (line: string) => !line.trim() || edgeKeys.has(edgeKey(line));
+  if (side === "start") {
+    let from = 0;
+    while (from < lines.length && from < EDGE_LINES * 2 && isEdge(lines[from])) from++;
+    return lines.slice(from).join("\n");
+  }
+  let to = lines.length;
+  while (to > 0 && lines.length - to < EDGE_LINES * 2 && isEdge(lines[to - 1])) to--;
+  return lines.slice(0, to).join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Phần 3. Tìm câu trích trong từng trang và ở chỗ nối hai trang
 // ---------------------------------------------------------------------------
 
@@ -105,6 +160,7 @@ function countIn(haystack: string, needle: string): number {
 function findPages(quote: string, pages: PdfPage[]): number[] {
   const found = new Set<number>();
   const texts = pages.map((page) => page.text);
+  const edgeKeys = findRepeatedEdgeLines(pages);
 
   for (let i = 0; i < pages.length; i++) {
     const own = variants(texts[i]);
@@ -114,10 +170,16 @@ function findPages(quote: string, pages: PdfPage[]): number[] {
     // 3b. Câu vắt qua chỗ nối với trang sau. Ghép hai trang trước rồi mới chuẩn hoá, để từ bị ngắt
     // ở cuối trang vẫn được nối. Chỉ tính khi ghép lại thấy NHIỀU lần hơn tổng hai trang riêng lẻ,
     // tức là có ít nhất một lần câu thật sự nằm vắt qua ranh giới, để không đếm trùng.
+    // Ghép hai cách: nguyên văn, và bỏ chân trang của trang này cùng đầu trang của trang sau (Phần 2c).
     if (i + 1 < pages.length) {
       const next = variants(texts[i + 1]);
-      const joined = variants(`${texts[i]}\n${texts[i + 1]}`);
-      const crosses = joined.some((text, v) => countIn(text, quote) > countIn(own[v], quote) + countIn(next[v], quote));
+      const joins = [
+        `${texts[i]}\n${texts[i + 1]}`,
+        `${trimEdge(texts[i], edgeKeys, "end")}\n${trimEdge(texts[i + 1], edgeKeys, "start")}`,
+      ];
+      const crosses = joins.some((join) =>
+        variants(join).some((text, v) => countIn(text, quote) > countIn(own[v], quote) + countIn(next[v], quote)),
+      );
       if (crosses) found.add(pages[i].page);
     }
   }

@@ -19,7 +19,7 @@ Ngoài ra còn một **cảnh báo thêm**: câu trích có dẫn nguồn khác 
 
 ## Đi qua file theo từng phần
 
-File chia thành 5 phần, có tiêu đề trong code.
+File chia thành các phần 1, 2, 2b, 2c, 3, 4, 5, có tiêu đề trong code.
 
 ### Phần 1. Con số tạm
 
@@ -71,12 +71,36 @@ Ngoài ra, câu trích **giữ** con số thật vẫn khớp với bản thư�
 
 **Hàm `variants`**: mỗi trang có đúng 4 bản để tìm (bỏ hoặc giữ gạch nối, nhân với bỏ hoặc giữ số chỉ dẫn). Bản giữ gạch nối dành cho từ ghép thật bị ngắt cuối dòng: "high-" xuống dòng "poverty". Bản bỏ gạch nối cho ra "highpoverty", bản giữ cho ra "high-poverty", và câu trích viết kiểu nào cũng khớp.
 
+### Phần 2c. Dòng đầu trang và chân trang (`findRepeatedEdgeLines`)
+
+Tạp chí thường in lặp lại một dòng ở đầu hoặc cuối mỗi trang: tên tạp chí, tên tác giả, số trang. Khi một câu vắt qua hai trang, dòng này chen vào giữa câu. Ví dụ thật ở bài tiếng Việt, trang 2 sang trang 3:
+
+```
+…từ đó đề xuất các giải pháp có tính khả thi nhằm thúc đẩy chuyển đổi số trong các doanh     ← cuối trang 2
+P.Q. Hai et al. / VNU Journal of Economics and Business, Vol. 3, No. 1 (2023) 28-3730        ← đầu trang 3
+nghiệp logistics phát triển theo đúng tiềm năng, thế mạnh.
+```
+
+AI chép đúng câu, nhưng vì dòng giữa chen vào nên trước đây câu bị "cần kiểm tra".
+
+Cách code nhận ra dòng đầu trang, chân trang:
+
+1. Xem 3 dòng đầu và 3 dòng cuối của mỗi trang.
+2. So các dòng sau khi chuẩn hoá, và coi mỗi dãy số liền nhau là một ký hiệu. Nhờ vậy "…(2023) 28-37 29" ở trang 2 và "…(2023) 28-3730" ở trang 3 được tính là cùng một dòng, dù số trang khác nhau và dính vào theo hai kiểu.
+3. Dòng nào lặp lại ở đầu hoặc cuối của **ít nhất 3 trang** thì mới coi là đầu trang, chân trang. Bài dưới 3 trang thì không áp dụng.
+
+Một câu nội dung tình cờ xuất hiện ở đầu 2 trang không đủ 3 lần, nên không bị coi nhầm.
+
+Code **chỉ bỏ dòng này khi so ở chỗ nối hai trang**: bỏ những dòng đầu trang, chân trang nằm sát mép (cuối trang này, đầu trang sau), rồi mới ghép hai trang lại. Chữ của bài và chữ hiển thị không đổi. Câu nằm gọn trong một trang vẫn được so với chữ nguyên vẹn. Ở chỗ nối, code thử cả cách ghép nguyên văn lẫn cách ghép đã bỏ dòng đầu trang, khớp một cách là được, nên không làm mất trường hợp nào trước đây vẫn khớp.
+
+Ở bài tiếng Anh mẫu, code còn nhận ra hai dòng ghi chú dưới bảng ("Note: *p < 0.1…", "Adj R2 …"), vì bảng hay nằm ở cuối trang. Hai dòng này cũng chỉ bị bỏ ở chỗ nối hai trang, nên vô hại.
+
 ### Phần 3. Tìm câu trích trong từng trang và ở chỗ nối (`findPages`)
 
 Với mỗi trang:
 
 - **3a.** Câu có nằm gọn trong trang này không?
-- **3b.** Câu có nằm vắt qua chỗ nối với trang sau không? Code ghép hai trang lại rồi mới chuẩn hoá, để từ bị ngắt ở cuối trang ("develop-" | "ment") vẫn được nối.
+- **3b.** Câu có nằm vắt qua chỗ nối với trang sau không? Code ghép hai trang lại rồi mới chuẩn hoá, để từ bị ngắt ở cuối trang ("develop-" | "ment") vẫn được nối. Code ghép theo hai cách: nguyên văn, và bỏ dòng đầu trang, chân trang ở chỗ nối (Phần 2c).
 
 Ở 3b, câu đã nằm gọn trong một trang thì cũng sẽ tìm thấy trong bản ghép, nên dễ bị đếm hai lần. Để tránh, code **đếm số lần**: chỉ khi bản ghép có **nhiều lần hơn** tổng số lần ở hai trang riêng, mới chắc chắn có một lần câu thật sự vắt qua ranh giới. Câu vắt qua hai trang tính là trang bắt đầu.
 
@@ -121,7 +145,8 @@ Bảng này cho thấy giới hạn của việc kiểm tra: code chỉ biết *
 ## Những gì chưa xử lý
 
 - **Chữ Latin bị tách trong PDF tiếng Trung**, ví dụ "Ｓｔｉ ｇ ｌｅｒ": khoảng trắng nằm giữa hai chữ cái nên vẫn được giữ, và câu sẽ thành "cần kiểm tra".
-- **Đầu trang, chân trang chen giữa câu vắt qua hai trang**, ví dụ "6 Science Progress 106(3)" nằm giữa câu: câu sẽ thành "cần kiểm tra".
+- **Chú thích cuối trang chen giữa câu vắt qua hai trang** (ví dụ chú thích "①…" của bài tiếng Trung nằm giữa cuối trang và đầu trang sau): chú thích không lặp lại ở nhiều trang nên không bị bỏ, và câu sẽ thành "cần kiểm tra".
+- **Dòng đầu trang, chân trang ở bài dưới 3 trang**: không nhận ra được.
 - **Số chỉ dẫn dính vào một chữ cái đơn** (ví dụ "R2"): không bị coi là số chỉ dẫn, để không đụng tới các ký hiệu như R² trong bảng.
 
 ## Chạy test
