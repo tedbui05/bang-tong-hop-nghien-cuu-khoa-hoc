@@ -2,7 +2,7 @@
 // và đọc code là biết file mẫu chứa gì. Chỉ dùng trong test.
 import { createHash } from "node:crypto";
 
-type PageSpec = { lines: string[] } | { image: true };
+export type PageSpec = { lines: string[] } | { image: true };
 
 type Encryption = { userPassword: string; ownerPassword: string };
 

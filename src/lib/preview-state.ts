@@ -8,7 +8,10 @@ export const PREVIEW_STATES: { value: PreviewState; label: string }[] = [
   { value: "trong", label: "Trống" },
 ];
 
-export function parsePreviewState(value: string | string[] | undefined): PreviewState {
+// Chỉ người làm app dùng, nên chỉ nhận khi chạy `npm run dev`. Bản chạy thật luôn ở trạng thái bình thường,
+// để link có ?trang-thai=loi không hiện màn hình lỗi giả cho người dùng.
+export function parsePreviewState(value: string | string[] | undefined, mode: string | undefined = process.env.NODE_ENV): PreviewState {
+  if (mode !== "development") return "binh-thuong";
   const match = PREVIEW_STATES.find((state) => state.value === value);
   return match ? match.value : "binh-thuong";
 }

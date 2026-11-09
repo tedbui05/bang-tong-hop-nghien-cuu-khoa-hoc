@@ -2,6 +2,9 @@
   "name": "project-tcb",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.18.0 <23 || >=23.6.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

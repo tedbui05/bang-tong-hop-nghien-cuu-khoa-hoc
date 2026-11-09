@@ -138,7 +138,7 @@ type Store = {
   cloud: CloudState;
   // Lưu ngay mọi thay đổi lên máy chủ (trước khi xuất Excel). true: máy chủ đã có đúng dữ liệu đang thấy.
   syncNow: () => Promise<boolean>;
-  resetData: () => void;
+  resetData: () => Promise<void>;
 };
 
 const StoreContext = createContext<Store | null>(null);

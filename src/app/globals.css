@@ -2773,6 +2773,21 @@ textarea {
   line-height: 1.55;
 }
 
+.confirm-dialog__list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.confirm-dialog__label {
+  display: block;
+  margin-top: 16px;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .confirm-dialog__actions {
   display: flex;
   flex-wrap: wrap;

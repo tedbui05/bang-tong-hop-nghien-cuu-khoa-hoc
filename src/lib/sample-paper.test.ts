@@ -1,10 +1,12 @@
 // Kiểm tra bài mẫu do app tạo (public/bai-mau/, dựng bằng scripts/tao-bai-mau.mjs) vẫn đọc được
 // và vẫn cho ra đúng các trường hợp mà kịch bản demo dựa vào.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import * as pdfjs from "pdfjs-dist";
 import { describe, expect, it } from "vitest";
-import { pdfFile } from "@/test/make-pdf";
+import { SAMPLE_PAPER_PAGES } from "@/test/bai-mau";
+import { makePdf, pdfFile } from "@/test/make-pdf";
 import { readPdfFile, type PdfEngine, type PdfPage } from "./pdf-read";
 import { stripReferences } from "./strip-references";
 import { verifyQuote } from "./verify-quote";
@@ -18,7 +20,18 @@ async function readSample(): Promise<PdfPage[]> {
   return result.pages;
 }
 
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
 describe("bài mẫu do app tạo", () => {
+  it("file PDF đã lưu khớp với nội dung trong src/test/bai-mau.ts", () => {
+    const saved = sha256(new Uint8Array(readFileSync(FILE)));
+    const built = sha256(makePdf(SAMPLE_PAPER_PAGES));
+    expect(
+      saved,
+      "public/bai-mau/bai-mau-do-app-tao.pdf không khớp với src/test/bai-mau.ts. Hãy chạy: node scripts/tao-bai-mau.mjs",
+    ).toBe(built);
+  });
+
   it("đọc được 5 trang, mỗi trang ghi rõ không phải bài báo thật", async () => {
     const pages = await readSample();
     expect(pages).toHaveLength(5);
