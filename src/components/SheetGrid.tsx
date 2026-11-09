@@ -82,6 +82,9 @@ export function SheetGrid(props: Props) {
   // Đang giữ chuột để kéo chọn vùng: chờ thả chuột mới mở khung bằng chứng, vì khung mở ra
   // làm bảng hẹp lại và các ô dịch chỗ ngay dưới con trỏ.
   const dragging = useRef(false);
+  // Lần nhấn chuột gần nhất vào một ô, để nhận ra bấm đúp khi ô đã bị dời chỗ giữa hai lần nhấn (xem effect bên dưới).
+  // Ghi theo mã cột và mã bài, vì khung mở ra làm bảng vẽ lại và phần tử của ô có thể bị thay.
+  const lastPress = useRef<{ time: number; x: number; y: number; field: string; row: string } | null>(null);
   const shownPapers = useRef(props.papers);
   const latest = useRef(props);
   const appliedColumns = useRef(columnSignature(props.columns));
@@ -140,6 +143,7 @@ export function SheetGrid(props: Props) {
           keybindings: { navPrev: false, navNext: false },
           // Mỗi ô không phải một điểm dừng của phím Tab: trong bảng đi bằng phím mũi tên.
           rowFormatter: (row: RowComponent) => {
+            row.getElement().dataset.paper = String(row.getIndex());
             row.getElement().querySelectorAll(".tabulator-cell[tabindex]").forEach((cell) => cell.setAttribute("tabindex", "-1"));
           },
         } as unknown as Options;
@@ -318,6 +322,45 @@ export function SheetGrid(props: Props) {
     });
   }, [ready, sort, filters, signature]);
 
+  // Bấm đúp vào ô ở phần bên phải màn hình: lần nhấn đầu mở khung bằng chứng, bảng hẹp lại và tự cuộn,
+  // nên lần nhấn thứ hai rơi vào ô khác hoặc vào khung bằng chứng. Nhấn lần hai đủ nhanh, gần đúng chỗ cũ
+  // mà ô đã dời đi thì coi là bấm đúp vào ô vừa chọn: mở ô sửa, chặn cú nhấn đó và cú bấm đi kèm.
+  useEffect(() => {
+    if (!ready) return;
+    const swallow = (name: "click" | "dblclick") => {
+      const stop = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      document.addEventListener(name, stop, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener(name, stop, { capture: true }), DOUBLE_CLICK_MS);
+    };
+    const onPress = (event: MouseEvent) => {
+      const press = lastPress.current;
+      if (!press || event.button !== 0) return;
+      const quick = event.timeStamp - press.time < DOUBLE_CLICK_MS;
+      const near = Math.abs(event.clientX - press.x) < 8 && Math.abs(event.clientY - press.y) < 8;
+      const under = cellKey(event.target as HTMLElement);
+      if (!quick || !near || (under?.field === press.field && under.row === press.row)) return;
+      lastPress.current = null;
+      const table = tableRef.current as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] } | null;
+      const cell = table
+        ?.getRanges()[0]
+        ?.getCells()
+        .flat()
+        .find((item) => item.getField() === press.field && String(item.getRow().getIndex()) === press.row);
+      if (!cell || !cell.getColumn().getDefinition().editor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      swallow("click");
+      swallow("dblclick");
+      revealCell(cell);
+      cell.edit(true);
+    };
+    document.addEventListener("mousedown", onPress, { capture: true });
+    return () => document.removeEventListener("mousedown", onPress, { capture: true });
+  }, [ready]);
+
   // Khung bằng chứng mở ra làm bảng hẹp lại: giữ ô đang chọn trong phần nhìn thấy.
   const { hasSelection } = props;
   useEffect(() => {
@@ -369,6 +412,12 @@ export function SheetGrid(props: Props) {
           // Bấm vào nhãn bằng chứng chỉ mở khung xem trước: không tính là chọn ô hay kéo chọn vùng.
           if ((event.target as HTMLElement).closest(".ev-chip")) return;
           interacted.current = true;
+          const pressed = cellKey(event.target as HTMLElement);
+          const before = lastPress.current;
+          const again = pressed && before && before.field === pressed.field && before.row === pressed.row;
+          // Nhấn lần hai vào chính ô đó thì để thư viện tự nhận bấm đúp.
+          if (again && event.timeStamp - before.time < DOUBLE_CLICK_MS) lastPress.current = null;
+          else lastPress.current = pressed && event.button === 0 ? { time: event.timeStamp, x: event.clientX, y: event.clientY, ...pressed } : null;
           // Chỉ kéo chọn khi nhấn trong vùng ô; nhấn vào tiêu đề cột hay thanh cuộn thì không.
           if (event.button === 0 && (event.target as HTMLElement).closest(".tabulator-tableholder")) dragging.current = true;
         }}
@@ -384,6 +433,17 @@ export function SheetGrid(props: Props) {
       </div>
     </div>
   );
+}
+
+// Hai lần nhấn cách nhau dưới khoảng này thì tính là bấm đúp.
+const DOUBLE_CLICK_MS = 500;
+
+// Mã cột và mã bài của ô chứa phần tử này (dòng giữ mã bài ở thuộc tính data-paper).
+function cellKey(target: HTMLElement): { field: string; row: string } | null {
+  const cell = target.closest<HTMLElement>(".tabulator-cell[tabulator-field]");
+  const row = cell?.closest<HTMLElement>(".tabulator-row")?.dataset.paper;
+  const field = cell?.getAttribute("tabulator-field");
+  return field && row ? { field, row } : null;
 }
 
 // Thư viện chưa tính đến cột cố định khi cuộn: ô được chọn không được chui xuống dưới cột đó hay ra ngoài cạnh phải.

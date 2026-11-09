@@ -23,7 +23,8 @@ const sourceFont = IBM_Plex_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Bảng tổng hợp bài báo",
+  // Mỗi trang đặt tên riêng, tab trình duyệt hiện "Tên trang · Bảng tổng hợp bài báo".
+  title: { default: "Bảng tổng hợp bài báo", template: "%s · Bảng tổng hợp bài báo" },
   description: "Đọc bài báo, duyệt từng ô có câu trích và số trang, rồi lưu vào bảng cho khóa luận.",
 };
 

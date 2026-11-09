@@ -459,7 +459,12 @@ function Sheet({ table }: { table: SheetTable }) {
             selection={selection}
             tags={tags}
             formatBar={<FormatBar key={targets.map((target) => `${target.paperId}:${target.columnId}`).join(",")} targets={targets} papers={papers} />}
-            onClose={() => setSelected(null)}
+            onClose={() => {
+              // Khung đóng lại thì nút đang giữ focus biến mất: trả focus về bảng để người dùng bàn phím đi tiếp được.
+              const inPanel = document.activeElement?.closest(".evidence-panel");
+              setSelected(null);
+              if (inPanel) document.querySelector<HTMLElement>(".sheet-host .tabulator-tableholder")?.focus({ preventScroll: true });
+            }}
             preview={preview}
           />
         ) : null}
