@@ -42,7 +42,19 @@ export type Paper = {
   info: PaperInfo;
   // Thông tin AI đề xuất ban đầu. Trường nào thiếu là chưa có đề xuất.
   suggested_info: PaperInfo;
+  // Model AI đã điền bài này. Không có: bài mẫu của bản xem thử, chưa có AI điền.
+  filled_by?: FilledBy;
 };
+
+// fallback: true khi model chính quá tải và bài được điền bằng model dự phòng.
+export type FilledBy = { model: string; fallback: boolean };
+
+// Dòng nhỏ ở màn hình duyệt. Model dự phòng dễ sai hơn ở các cột cần phân biệt tinh tế,
+// nên nhắc sinh viên duyệt kỹ hơn.
+export function filledByText(filledBy: FilledBy): string {
+  if (!filledBy.fallback) return `Điền bởi ${filledBy.model}`;
+  return `Điền bởi ${filledBy.model} (model dự phòng). Model này dễ sai hơn ở các cột cần phân biệt tinh tế, hãy duyệt kỹ từng ô.`;
+}
 
 // Định dạng do sinh viên tự làm. Không đổi nội dung nên không tính là "sửa ô" khi đo chỉ số.
 export type CellFormat = {

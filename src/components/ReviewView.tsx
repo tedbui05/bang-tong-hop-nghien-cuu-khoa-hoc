@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import type { PreviewState } from "@/lib/preview-state";
 import { useStore } from "@/lib/store";
-import { getLabelKey } from "@/lib/types";
+import { filledByText, getLabelKey } from "@/lib/types";
 import { InfoCard } from "./InfoCard";
 import { ReviewCard } from "./ReviewCard";
 import { SkeletonLines, StateMessage } from "./StateMessage";
@@ -192,6 +192,7 @@ function ReviewSession() {
             {session.paper.info.title}
           </h1>
           {table ? <p className="paper-heading__meta">Sẽ lưu vào bảng “{table.name}”</p> : null}
+          {session.paper.filled_by ? <p className="small-note">{filledByText(session.paper.filled_by)}</p> : null}
           {session.fileName ? (
             <p className="small-note">
               Bạn đã chọn “{session.fileName}”. App chưa đọc PDF nên bản xem thử luôn hiện bài mẫu này.

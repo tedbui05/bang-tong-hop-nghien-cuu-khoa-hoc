@@ -2,6 +2,8 @@
 // Khi có cơ sở dữ liệu, chỉ cần đổi nội dung hàm logEvent.
 export type AppEvent =
   | "tai_bai"
+  // Bài được điền bằng model dự phòng vì model chính quá tải. Đếm số lần này để biết model chính có đủ dùng không.
+  | "dung_model_du_phong"
   | "o_giu_nguyen"
   | "o_bi_sua"
   | "o_can_kiem_tra"

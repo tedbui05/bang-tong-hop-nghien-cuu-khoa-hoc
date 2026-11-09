@@ -7,7 +7,7 @@ import { logEvent } from "./events";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import type { FillKey, TagColorKey } from "./palette";
 import type { PdfPage } from "./pdf-read";
-import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
+import { getLabelKey, type CellFormat, type FilledBy, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
 // Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
 // Khi có cơ sở dữ liệu thì thay phần đọc và ghi này. Bài đang duyệt dở không được giữ.
@@ -54,7 +54,8 @@ type Store = {
   reorderColumns: (ids: string[]) => void;
   review: ReviewSession | null;
   savedTitle: string | null;
-  startReview: (fileName: string | null, pages?: PdfPage[] | null) => void;
+  // filledBy: model AI đã điền bài. Bản xem thử chưa nối AI nên chưa truyền vào.
+  startReview: (fileName: string | null, pages?: PdfPage[] | null, filledBy?: FilledBy) => void;
   updateCell: (index: number, change: Partial<Pick<ReviewCell, "value_vi" | "review">>) => void;
   updateInfo: (info: PaperInfo) => void;
   setInfoConfirmed: (confirmed: boolean) => void;
@@ -379,7 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Bản xem thử chưa có AI: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
   const startReview = useCallback(
-    (fileName: string | null, pages: PdfPage[] | null = null) => {
+    (fileName: string | null, pages: PdfPage[] | null = null, filledBy?: FilledBy) => {
       // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
       if (!activeTable || !hydrated) return;
       const { columns } = activeTable;
@@ -396,7 +397,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return next;
       };
       if (fileName) {
-        logEvent("tai_bai", { so_o: cells.length, so_trang: pages?.length ?? 0 });
+        logEvent("tai_bai", {
+          so_o: cells.length,
+          so_trang: pages?.length ?? 0,
+          ...(filledBy ? { model: filledBy.model, du_phong: filledBy.fallback ? 1 : 0 } : {}),
+        });
+        if (filledBy?.fallback) logEvent("dung_model_du_phong", { model: filledBy.model });
         cells
           .filter((cell) => getLabelKey(cell) === "needs_review")
           .forEach((cell) => logEvent("o_can_kiem_tra", { cot: cell.column }));
@@ -411,6 +417,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           id: `bai-${crypto.randomUUID()}`,
           info: keepInfo(reviewPaper.info),
           suggested_info: keepInfo(reviewPaper.suggested_info),
+          ...(filledBy ? { filled_by: filledBy } : {}),
         },
         fileName,
         pages,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
 import { OVERLOADED_MESSAGE, extractPaper, readExtractBody, type CallModel, type ModelCall, type ModelResult } from "./ai-extract";
 import type { PdfPage } from "./pdf-read";
+import { filledByText } from "./types";
 
 const columns: AiColumn[] = [
   { id: "info-title", name: "Tên bài", description: "", kind: "info", infoKey: "title" },
@@ -21,6 +22,10 @@ const pages: PdfPage[] = [
   { page: 2, text: `${body("method")}\nWe surveyed 412 households in three provinces.` },
   { page: 3, text: "References\nSmith J. (2020). A secret reference sentence." },
 ];
+
+// Các test cũ: chỉ có model chính, không đặt model dự phòng.
+const NO_FALLBACK = { primary: "model-chinh" };
+const WITH_FALLBACK = { primary: "model-chinh", fallback: "model-du-phong" };
 
 const goodAnswer = {
   info: { title: "A study of reading", year: "2023" },
@@ -96,7 +101,7 @@ describe("câu lệnh gửi AI", () => {
 describe("gọi AI và đọc câu trả lời", () => {
   it("câu trả lời đúng khuôn: trả về ô theo thứ tự cột, chưa có kết quả kiểm tra", async () => {
     const model = fakeModel(goodAnswer);
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     if (!result.ok) throw new Error(result.error.title);
     expect(result.attempts).toBe(1);
     expect(result.answer.info).toEqual({ title: "A study of reading", year: "2023" });
@@ -117,14 +122,14 @@ describe("gọi AI và đọc câu trả lời", () => {
 
   it("đã cắt tài liệu tham khảo trước khi gửi", async () => {
     const model = fakeModel(goodAnswer);
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     expect(model.calls[0].userText).not.toContain("secret reference sentence");
     expect(result.ok && result.removedReferences).toEqual({ fromPage: 3, toPage: 3 });
   });
 
   it("sai khuôn lần đầu thì gửi lại một lần, kèm lý do sai", async () => {
     const model = fakeModel("đây không phải JSON", goodAnswer);
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     expect(result.ok).toBe(true);
     expect(result.attempts).toBe(2);
     expect(model.calls[1].userText).toContain("Lần trước bạn trả lời sai định dạng: câu trả lời không phải JSON hợp lệ");
@@ -133,7 +138,7 @@ describe("gọi AI và đọc câu trả lời", () => {
 
   it("sai khuôn hai lần thì báo lỗi, không gọi lần thứ ba", async () => {
     const model = fakeModel("{}", "{}");
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("bad_format");
@@ -143,7 +148,7 @@ describe("gọi AI và đọc câu trả lời", () => {
 
   it("hết lượt hoặc quá tải: báo đúng câu, có nút thử lại, không tự gửi lại", async () => {
     const model = fakeModel({ ok: false, kind: "overloaded" });
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     if (result.ok) throw new Error("Mong đợi báo lỗi");
     expect(result.error.title).toBe(OVERLOADED_MESSAGE);
     expect(result.error.title).toBe("Hệ thống đang quá tải, vui lòng thử lại sau ít phút");
@@ -153,13 +158,13 @@ describe("gọi AI và đọc câu trả lời", () => {
 
   it("quá tải ở lần gửi lại cũng báo quá tải", async () => {
     const model = fakeModel("sai", { ok: false, kind: "overloaded" });
-    const result = await extractPaper(columns, pages, model.call);
+    const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
     expect(!result.ok && result.error.code).toBe("overloaded");
   });
 
   it("bài quá dài sau khi cắt tài liệu tham khảo thì không gọi AI", async () => {
     const model = fakeModel();
-    const result = await extractPaper(columns, [{ page: 1, text: "a".repeat(100_001) }], model.call);
+    const result = await extractPaper(columns, [{ page: 1, text: "a".repeat(100_001) }], model.call, NO_FALLBACK);
     expect(!result.ok && result.error.code).toBe("too_long");
     expect(!result.ok && result.error.detail).toContain("100.001");
     expect(model.calls).toHaveLength(0);
@@ -181,15 +186,139 @@ describe("gọi AI và đọc câu trả lời", () => {
   for (const [name, answer] of wrongAnswers) {
     it(`coi là sai khuôn: ${name}`, async () => {
       const model = fakeModel(answer, answer);
-      const result = await extractPaper(columns, pages, model.call);
+      const result = await extractPaper(columns, pages, model.call, NO_FALLBACK);
       expect(!result.ok && result.error.code).toBe("bad_format");
     });
   }
 
   it("ô not_found luôn ghi đúng chữ 'không tìm thấy'", async () => {
     const answer = { ...goodAnswer, cells: [goodAnswer.cells[0], { ...goodAnswer.cells[1], value_vi: "Bài không nêu" }] };
-    const result = await extractPaper(columns, pages, fakeModel(answer).call);
+    const result = await extractPaper(columns, pages, fakeModel(answer).call, NO_FALLBACK);
     expect(result.ok && result.answer.cells[1].value_vi).toBe("không tìm thấy");
+  });
+});
+
+describe("model dự phòng", () => {
+  const overloaded: ModelResult = { ok: false, kind: "overloaded" };
+  const timeout: ModelResult = { ok: false, kind: "timeout" };
+
+  it("model chính trả lời được: không gọi model dự phòng", async () => {
+    const model = fakeModel(goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    if (!result.ok) throw new Error(result.error.title);
+    expect(result.model).toBe("model-chinh");
+    expect(result.usedFallback).toBe(false);
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh"]);
+  });
+
+  it("model chính quá tải, model dự phòng trả lời được: bài do model dự phòng điền", async () => {
+    const model = fakeModel(overloaded, goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    if (!result.ok) throw new Error(result.error.title);
+    expect(result.model).toBe("model-du-phong");
+    expect(result.usedFallback).toBe(true);
+    expect(result.attempts).toBe(2);
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-du-phong"]);
+    // Model dự phòng nhận đúng câu lệnh như model chính.
+    expect(model.calls[1].userText).toBe(model.calls[0].userText);
+    expect(model.calls[1].systemInstruction).toBe(model.calls[0].systemInstruction);
+  });
+
+  it("model chính quá giờ: chuyển sang model dự phòng", async () => {
+    const model = fakeModel(timeout, goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(result.ok && result.model).toBe("model-du-phong");
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-du-phong"]);
+  });
+
+  it("cả hai đều quá tải: báo quá tải, có nút thử lại, chỉ gọi mỗi model một lần", async () => {
+    const model = fakeModel(overloaded, overloaded);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    if (result.ok) throw new Error("Mong đợi báo lỗi");
+    expect(result.error.title).toBe("Hệ thống đang quá tải, vui lòng thử lại sau ít phút");
+    expect(result.error.retry).toBe(true);
+    expect(result.usedFallback).toBe(true);
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-du-phong"]);
+  });
+
+  it("model chính quá giờ, model dự phòng lỗi khác: vẫn báo quá tải kèm nút thử lại", async () => {
+    const model = fakeModel(timeout, { ok: false, kind: "failed" });
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(!result.ok && result.error.code).toBe("overloaded");
+    expect(!result.ok && result.error.retry).toBe(true);
+  });
+
+  it("model dự phòng sai khuôn thì gửi lại một lần cho chính model dự phòng", async () => {
+    const model = fakeModel(overloaded, "sai", goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(result.ok && result.model).toBe("model-du-phong");
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-du-phong", "model-du-phong"]);
+    expect(model.calls[2].userText).toContain("Lần trước bạn trả lời sai định dạng");
+  });
+
+  it("model dự phòng sai khuôn hai lần: báo sai định dạng", async () => {
+    const model = fakeModel(overloaded, "sai", "sai");
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(!result.ok && result.error.code).toBe("bad_format");
+    expect(model.calls).toHaveLength(3);
+  });
+
+  it("model chính sai khuôn: gửi lại cho model chính, không chuyển sang dự phòng", async () => {
+    const model = fakeModel("sai", goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(result.ok && result.model).toBe("model-chinh");
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-chinh"]);
+  });
+
+  it("model chính sai khuôn hai lần: báo sai định dạng, không gọi model dự phòng", async () => {
+    const model = fakeModel("sai", "sai");
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(!result.ok && result.error.code).toBe("bad_format");
+    expect(model.calls.map((call) => call.model)).toEqual(["model-chinh", "model-chinh"]);
+  });
+
+  it("model chính quá tải ở lần gửi lại vì sai khuôn: vẫn chuyển sang dự phòng", async () => {
+    const model = fakeModel("sai", overloaded, goodAnswer);
+    const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+    expect(result.ok && result.model).toBe("model-du-phong");
+    expect(result.attempts).toBe(3);
+  });
+
+  it("lỗi mà model dự phòng không giúp được (key sai, bị chặn): không gọi model dự phòng", async () => {
+    for (const kind of ["not_configured", "blocked", "failed"] as const) {
+      const model = fakeModel({ ok: false, kind });
+      const result = await extractPaper(columns, pages, model.call, WITH_FALLBACK);
+      expect(!result.ok && result.error.code, kind).toBe(kind);
+      expect(model.calls, kind).toHaveLength(1);
+    }
+  });
+
+  it("không đặt model dự phòng: quá tải thì báo ngay như cũ", async () => {
+    for (const fallback of [undefined, null, "", "  "]) {
+      const model = fakeModel(overloaded);
+      const result = await extractPaper(columns, pages, model.call, { primary: "model-chinh", fallback });
+      expect(!result.ok && result.error.code).toBe("overloaded");
+      expect(model.calls).toHaveLength(1);
+    }
+  });
+
+  it("model dự phòng trùng tên model chính: không gọi lại cùng model", async () => {
+    const model = fakeModel(overloaded);
+    const result = await extractPaper(columns, pages, model.call, { primary: "model-chinh", fallback: "model-chinh" });
+    expect(!result.ok && result.error.code).toBe("overloaded");
+    expect(model.calls).toHaveLength(1);
+  });
+});
+
+describe("dòng 'Điền bởi' ở màn hình duyệt", () => {
+  it("model chính", () => {
+    expect(filledByText({ model: "gemini-3.6-flash", fallback: false })).toBe("Điền bởi gemini-3.6-flash");
+  });
+
+  it("model dự phòng: ghi rõ và nhắc duyệt kỹ", () => {
+    const text = filledByText({ model: "gemini-3.5-flash-lite", fallback: true });
+    expect(text).toContain("Điền bởi gemini-3.5-flash-lite (model dự phòng)");
+    expect(text).toContain("duyệt kỹ");
   });
 });
 

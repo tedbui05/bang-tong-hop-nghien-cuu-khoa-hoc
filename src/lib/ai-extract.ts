@@ -1,5 +1,6 @@
 // Điều phối một lần AI điền bảng: cắt tài liệu tham khảo, dựng câu lệnh, gọi AI, kiểm tra khuôn,
-// gửi lại một lần nếu sai khuôn, và đổi mọi lỗi thành câu tiếng Việt dễ hiểu.
+// gửi lại một lần nếu sai khuôn, chuyển sang model dự phòng nếu model chính quá tải,
+// và đổi mọi lỗi thành câu tiếng Việt dễ hiểu.
 // Hàm gọi AI được truyền vào từ ngoài, nên bài test dùng câu trả lời giả, không gọi Gemini thật.
 import { parseAiAnswer, type AiAnswer } from "./ai-answer";
 import { SYSTEM_INSTRUCTION, buildResponseSchema, buildUserText, makeAiRequest, type AiColumn } from "./ai-prompt";
@@ -7,15 +8,17 @@ import type { PdfPage } from "./pdf-read";
 import { MAX_PAPER_CHARS, countPaperChars, stripReferences } from "./strip-references";
 
 export type ModelCall = {
+  // Tên model cần gọi, ví dụ "gemini-3.6-flash".
+  model: string;
   systemInstruction: string;
   userText: string;
   responseSchema: unknown;
 };
 
 // Kết quả của một lần gọi AI, đã bỏ mọi chi tiết kỹ thuật (không có key, không có lời gốc của máy chủ AI).
-export type ModelResult =
-  | { ok: true; text: string }
-  | { ok: false; kind: "overloaded" | "blocked" | "timeout" | "not_configured" | "failed" };
+export type ModelErrorKind = "overloaded" | "blocked" | "timeout" | "not_configured" | "failed";
+
+export type ModelResult = { ok: true; text: string } | { ok: false; kind: ModelErrorKind };
 
 export type CallModel = (call: ModelCall) => Promise<ModelResult>;
 
@@ -32,9 +35,21 @@ export type ExtractErrorCode =
 // retry: có hiện nút "Thử lại" hay không.
 export type ExtractError = { code: ExtractErrorCode; title: string; detail: string; retry: boolean };
 
+// Model chính và model dự phòng, lấy từ biến môi trường GEMINI_MODEL và GEMINI_FALLBACK_MODEL.
+export type AiModels = { primary: string; fallback?: string | null };
+
 export type ExtractResult =
-  | { ok: true; answer: AiAnswer; attempts: number; removedReferences: { fromPage: number; toPage: number } | null }
-  | { ok: false; error: ExtractError; attempts: number };
+  | {
+      ok: true;
+      answer: AiAnswer;
+      // Tổng số lần gọi AI, tính cả model chính và model dự phòng.
+      attempts: number;
+      // Model đã điền bài này, và có phải model dự phòng không.
+      model: string;
+      usedFallback: boolean;
+      removedReferences: { fromPage: number; toPage: number } | null;
+    }
+  | { ok: false; error: ExtractError; attempts: number; usedFallback: boolean };
 
 export const OVERLOADED_MESSAGE = "Hệ thống đang quá tải, vui lòng thử lại sau ít phút";
 
@@ -69,28 +84,69 @@ export function extractError(code: ExtractErrorCode, chars = 0): ExtractError {
   }
 }
 
-// Sai khuôn thì gửi lại đúng một lần.
+// Sai khuôn thì gửi lại đúng một lần, cho chính model vừa trả lời.
 const MAX_ATTEMPTS = 2;
 
-export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callModel: CallModel): Promise<ExtractResult> {
+// Model chính gặp các lỗi này thì chuyển sang model dự phòng: máy chủ quá tải, hết lượt, hoặc chờ quá lâu.
+// Lỗi khác (key sai, bị chặn, sai khuôn) thì model dự phòng cũng không giúp được, nên báo luôn.
+const SWITCH_TO_FALLBACK = new Set<ModelErrorKind>(["overloaded", "timeout"]);
+
+type ModelRun =
+  | { ok: true; answer: AiAnswer; attempts: number }
+  | { ok: false; code: ExtractErrorCode; attempts: number; switchable: boolean };
+
+export async function extractPaper(columns: AiColumn[], pages: PdfPage[], callModel: CallModel, models: AiModels): Promise<ExtractResult> {
   const stripped = stripReferences(pages);
   const chars = countPaperChars(stripped.pages);
-  if (chars > MAX_PAPER_CHARS) return { ok: false, error: extractError("too_long", chars), attempts: 0 };
-  if (!stripped.pages.some((page) => page.text.trim())) return { ok: false, error: extractError("no_text"), attempts: 0 };
+  if (chars > MAX_PAPER_CHARS) return { ok: false, error: extractError("too_long", chars), attempts: 0, usedFallback: false };
+  if (!stripped.pages.some((page) => page.text.trim())) {
+    return { ok: false, error: extractError("no_text"), attempts: 0, usedFallback: false };
+  }
 
   const request = makeAiRequest(columns, stripped.pages);
   const responseSchema = buildResponseSchema(request);
-  let problem: string | undefined;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const result = await callModel({ systemInstruction: SYSTEM_INSTRUCTION, userText: buildUserText(request, problem), responseSchema });
-    // Hết lượt, quá tải hay lỗi mạng thì không tự gửi lại: báo ngay để sinh viên bấm "Thử lại".
-    if (!result.ok) return { ok: false, error: extractError(result.kind), attempts: attempt };
-    const parsed = parseAiAnswer(result.text, request);
-    if (parsed.ok) return { ok: true, answer: parsed.answer, attempts: attempt, removedReferences: stripped.removed };
-    problem = parsed.problem;
+  // Gọi một model: sai khuôn thì gửi lại một lần cho chính model đó, kèm lý do sai.
+  async function runModel(model: string): Promise<ModelRun> {
+    let problem: string | undefined;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const result = await callModel({ model, systemInstruction: SYSTEM_INSTRUCTION, userText: buildUserText(request, problem), responseSchema });
+      if (!result.ok) return { ok: false, code: result.kind, attempts: attempt, switchable: SWITCH_TO_FALLBACK.has(result.kind) };
+      const parsed = parseAiAnswer(result.text, request);
+      if (parsed.ok) return { ok: true, answer: parsed.answer, attempts: attempt };
+      problem = parsed.problem;
+    }
+    return { ok: false, code: "bad_format", attempts: MAX_ATTEMPTS, switchable: false };
   }
-  return { ok: false, error: extractError("bad_format"), attempts: MAX_ATTEMPTS };
+
+  const done = (run: ModelRun & { ok: true }, model: string, usedFallback: boolean, attempts: number): ExtractResult => ({
+    ok: true,
+    answer: run.answer,
+    attempts,
+    model,
+    usedFallback,
+    removedReferences: stripped.removed,
+  });
+
+  // 1. Gọi model chính.
+  const primary = await runModel(models.primary);
+  if (primary.ok) return done(primary, models.primary, false, primary.attempts);
+
+  // 2. Model chính quá tải hoặc quá giờ, và có model dự phòng: gọi model dự phòng đúng một lần.
+  const fallback = models.fallback?.trim();
+  if (primary.switchable && fallback && fallback !== models.primary) {
+    console.info("[ai] model chính quá tải hoặc quá giờ, chuyển sang model dự phòng");
+    const second = await runModel(fallback);
+    const attempts = primary.attempts + second.attempts;
+    if (second.ok) return done(second, fallback, true, attempts);
+    // Model dự phòng sai khuôn thì báo sai khuôn; lỗi khác thì báo quá tải như cũ, kèm nút Thử lại.
+    const code = second.code === "bad_format" ? "bad_format" : "overloaded";
+    return { ok: false, error: extractError(code), attempts, usedFallback: true };
+  }
+
+  // 3. Không có model dự phòng, hoặc lỗi mà model dự phòng không giúp được: báo luôn.
+  // Hết lượt, quá tải hay lỗi mạng thì không tự gửi lại: sinh viên bấm "Thử lại".
+  return { ok: false, error: extractError(primary.code), attempts: primary.attempts, usedFallback: false };
 }
 
 // Kiểm tra dữ liệu trang web gửi lên trước khi gọi AI. Giới hạn rộng hơn nhiều so với bài thật,

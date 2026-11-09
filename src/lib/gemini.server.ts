@@ -1,7 +1,7 @@
 // Gọi Gemini. Chỉ chạy trên máy chủ: key nằm trong biến môi trường, không bao giờ gửi cho trình duyệt.
 // Không ghi key, câu lệnh hay lời gốc của máy chủ Gemini vào log, chỉ ghi mã lỗi HTTP.
 import "server-only";
-import type { CallModel, ModelResult } from "./ai-extract";
+import type { AiModels, CallModel, ModelResult } from "./ai-extract";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -22,11 +22,16 @@ type GeminiResponse = {
   promptFeedback?: { blockReason?: string };
 };
 
-export const callGemini: CallModel = async ({ systemInstruction, userText, responseSchema }) => {
+// Model chính (GEMINI_MODEL) và model dự phòng (GEMINI_FALLBACK_MODEL, có thể bỏ trống).
+// Model dự phòng chỉ được gọi khi model chính quá tải hoặc quá giờ (xem ai-extract.ts).
+export function geminiModels(): AiModels {
+  return { primary: process.env.GEMINI_MODEL?.trim() ?? "", fallback: process.env.GEMINI_FALLBACK_MODEL?.trim() || null };
+}
+
+export const callGemini: CallModel = async ({ model, systemInstruction, userText, responseSchema }) => {
   const key = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL;
   if (!key || !model) {
-    console.error("[gemini] thiếu GEMINI_API_KEY hoặc GEMINI_MODEL");
+    console.error("[gemini] thiếu GEMINI_API_KEY hoặc tên model");
     return { ok: false, kind: "not_configured" };
   }
 
@@ -53,12 +58,12 @@ export const callGemini: CallModel = async ({ systemInstruction, userText, respo
     });
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-    console.error("[gemini] không nhận được trả lời sau", seconds(), timedOut ? "(quá thời gian chờ)" : "");
+    console.error("[gemini]", model, "không nhận được trả lời sau", seconds(), timedOut ? "(quá thời gian chờ)" : "");
     return { ok: false, kind: timedOut ? "timeout" : "failed" };
   }
 
   if (!response.ok) {
-    console.error("[gemini] lỗi HTTP", response.status, "sau", seconds());
+    console.error("[gemini]", model, "lỗi HTTP", response.status, "sau", seconds());
     // 429: hết lượt miễn phí hoặc gửi quá nhanh. 503: máy chủ Gemini đang quá tải.
     if (response.status === 429 || response.status === 503) return { ok: false, kind: "overloaded" };
     // 401, 403: key sai hoặc không có quyền. 404: tên model sai hoặc model đã ngừng cho người dùng mới.
@@ -76,7 +81,7 @@ export const callGemini: CallModel = async ({ systemInstruction, userText, respo
     console.error("[gemini] câu trả lời không đọc được, sau", seconds());
     return { ok: false, kind: "failed" };
   }
-  console.info("[gemini] HTTP", response.status, "sau", seconds());
+  console.info("[gemini]", model, "HTTP", response.status, "sau", seconds());
   return readCandidate(data);
 };
 

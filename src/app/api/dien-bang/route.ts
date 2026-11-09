@@ -1,7 +1,7 @@
 // Máy chủ nhận chữ của bài và danh sách cột, gọi AI, trả về các ô AI đề xuất.
 // Kết quả chỉ là đề xuất: chưa kiểm tra câu trích, chưa ghi vào bảng.
 import { extractPaper, readExtractBody } from "@/lib/ai-extract";
-import { callGemini } from "@/lib/gemini.server";
+import { callGemini, geminiModels } from "@/lib/gemini.server";
 
 // Chờ AI đọc bài có thể mất vài phút.
 export const maxDuration = 300;
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const result = await extractPaper(input.columns, input.pages, callGemini);
+  const result = await extractPaper(input.columns, input.pages, callGemini, geminiModels());
   // Lỗi đã được đổi thành câu tiếng Việt nằm trong result, trang web đọc trường ok để biết.
   return Response.json(result);
 }
