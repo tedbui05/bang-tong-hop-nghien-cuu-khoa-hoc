@@ -140,6 +140,7 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 
 ## Việc cần làm sau
 
+- Xoá thư mục `.git-sao-luu-2026-11-09` (bản sao lưu `.git` trước khi dọn lịch sử ngày 9/11/2026, vẫn còn ảnh có trang bài mẫu) sau khi đẩy git lên GitHub lần đầu thành công. Người dùng tự xoá, vì hook an toàn chặn Claude xoá thư mục.
 - Đã chạy 3 bài trong `samples/` bằng `gemini-3.6-flash` ngày 9/11/2026, toàn bộ câu trả lời nằm trong `samples/ket-qua-gemini.json`. Còn lại: thử thêm trên bài thật khác, nhất là xem cột Câu hỏi và Kết quả còn hay trích từ phần tóm tắt không.
 
 ### So sánh model trên bài tiếng Việt (Phạm Quang Hải và cộng sự, 2023)
