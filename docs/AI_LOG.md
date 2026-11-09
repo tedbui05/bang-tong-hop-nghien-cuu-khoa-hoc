@@ -14,7 +14,7 @@
   - Số trang: sửa lại. Có ở đúng một trang khác thì tự sửa số trang và hiện nhãn "đã sửa số trang". Có ở nhiều trang thì "cần kiểm tra", vì không biết trang nào đúng. Không có ở đâu thì "cần kiểm tra" như cũ.
   - Mã ẩn danh: chấp nhận, và thêm dòng nhắc xuất Excel trên giao diện; giới hạn này được ghi lại để đưa vào README sau.
   - Quyền riêng tư: chấp nhận, và thêm dòng nhắc ở màn hình tải bài.
-  - /doctor: giữ nguyên CLAUDE.md; không bật auto mode làm mặc định, không nêu lý do.
+  - /doctor: giữ nguyên CLAUDE.md; không bật auto mode làm mặc định, vì /doctor xác nhận CLAUDE.md mới 64 dòng, nội dung đều cần thiết nên chưa cần tách. Chưa bật auto mode làm mặc định vì lúc đầu người dùng muốn tự duyệt từng thao tác để hiểu Claude làm gì; sau khi có guard.sh và các quyền chặn mới dùng auto mode cho từng phiên.
 - **AI đã sai ở đâu:** Đề xuất về số trang gộp mọi trường hợp lệch trang vào "cần kiểm tra", chưa tách trường hợp có ở đúng một trang khác (code tự xác định được) với trường hợp có ở nhiều trang. Người dùng đã bổ sung phần này.
 
 ## 2026-11-06 19:21 — Tạo tiện ích làm việc trong thư mục .claude
@@ -33,7 +33,7 @@
 
 - **Đã nhờ AI làm gì:** Chạy lệnh `/check`, rồi chạy `/ailog`.
 - **AI đề xuất gì:** `/check` báo dự án chưa có code nên chưa có gì để kiểm tra. AI gợi ý gõ thử lại `/ailog`.
-- **Chấp nhận hay sửa gì, vì sao:** Người dùng đã gõ lại `/ailog`, không nêu lý do. Vẫn chưa có phản hồi về các phần AI đề xuất thêm ở mục trước.
+- **Chấp nhận hay sửa gì, vì sao:** Người dùng đã gõ lại `/ailog` để thử xem lệnh vừa tạo có ghi đúng vào nhật ký không. Vẫn chưa có phản hồi về các phần AI đề xuất thêm ở mục trước.
 - **AI đã sai ở đâu:** không có.
 
 ## 2026-11-06 20:01 — Cài skill, tạo citation-check và đổi sang đăng nhập ẩn danh
@@ -122,8 +122,8 @@
   - Dải báo mất mạng trên mọi trang; chân bảng ghi trạng thái lưu lên máy chủ; xuất Excel lưu hết lên máy chủ trước.
   - Lệnh `npm run test:phan-quyen` chạy trên Supabase thật: tạo hai người dùng ẩn danh tạm, thử đọc, sửa, xoá, giả danh chéo nhau, rồi xoá họ.
 - **Chấp nhận hay sửa gì, vì sao:**
-  - Người dùng tự cài Supabase, tự chạy hai file SQL và tự thêm biến môi trường, không đưa khoá cho AI; không nêu lý do.
-  - Chấp nhận bảng đối chiếu và cách làm các mục còn thiếu; không nêu lý do.
+  - Người dùng tự cài Supabase, tự chạy hai file SQL và tự thêm biến môi trường, không đưa khoá cho AI, vì nguyên tắc của dự án là AI không bao giờ thấy khoá. Khoá chỉ nằm ở trang quản lý Supabase và file biến môi trường, không đi qua cuộc trò chuyện hay log.
+  - Chấp nhận bảng đối chiếu và cách làm các mục còn thiếu, vì bảng đối chiếu bám đúng 10 mục của Phiên 6, cho thấy rõ mục nào xong, mục nào thiếu; các mục thiếu làm theo kế hoạch đã duyệt.
   - Người dùng dặn ghi vào nhật ký lỗi vòng lặp 42P17 và chuyện test đạt vì lý do sai.
 - **AI đã sai ở đâu:**
   - SQL bản đầu đặt giới hạn số dòng mỗi người (200 bảng, 5000 bài, 3000 thao tác mỗi ngày) ngay trong quy tắc phân quyền "được thêm dòng". Quy tắc đó đếm dòng của chính bảng nó bảo vệ nên Postgres báo vòng lặp (lỗi 42P17) và chặn mọi lần thêm, kể cả của chính chủ. Nếu đem dùng thì app không lưu được gì lên máy chủ. Lệnh `test:phan-quyen` bắt được lỗi này; AI chuyển giới hạn sang trigger, người dùng phải chạy lại file SQL.
@@ -158,7 +158,7 @@
     - Vừa: bấm đúp ô ở nửa phải màn hình không mở được ô sửa, vì khung bằng chứng mở ra làm bảng tự cuộn.
     - Vừa: bấm Esc ở khung chi tiết làm mất vị trí của người dùng bàn phím.
     - Vừa: mọi trang trùng tên tab.
-  - Người dùng chọn sửa cả 4 góp ý nhẹ của reviewer; không nêu lý do.
+  - Người dùng chọn sửa cả 4 góp ý nhẹ của reviewer, vì cả 4 đều sửa nhanh và tránh rủi ro thật. Màn hình lỗi giả trên bản thật có thể khiến app trông như hỏng khi giám khảo mở nhầm link. Lời hỏi lại của nút xoá nói sai việc nút làm, người dùng có thể mất dữ liệu vì tin vào đó. Test bài mẫu có thể đạt dù đang kiểm tra file cũ, đúng loại lỗi "test đạt vì lý do sai" đã gặp ở Phiên 6. Ghi phiên bản Node để deploy lên Vercel chạy đúng.
   - Người dùng chọn sửa cả 6 lỗi giao diện nhẹ, ưu tiên lỗi ảnh hưởng đến việc kiểm chứng (câu có ở nhiều trang, tự dịch làm lệch tô vàng) và lỗi giám khảo thấy ngay khi demo. Người dùng yêu cầu thêm:
     - Viền mới chỉ cho ô nhập liệu và ô kéo thả, để giao diện không bị nặng.
     - Nút xoá đổi tên thành "Xoá toàn bộ dữ liệu của tôi" cho đúng với việc nó làm, và đặt ở chỗ ít nổi bật.
