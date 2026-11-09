@@ -7,17 +7,18 @@ import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type CellTarget } from "@/lib/store";
 import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
 import { filledByText, getLabelKey, getReviewReason, isCellEdited, type Highlight, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
+import { EvidenceChip, type EvidencePreviewApi } from "./EvidencePreview";
 import { HighlightText, useTextSelection } from "./HighlightText";
 import { MarkdownView } from "./MarkdownView";
 import { StatusIcon } from "./StatusBadge";
 
 export type EvidenceSelection = { paper: SavedPaper; cell: ReviewCell | undefined; column: TableColumn; count: number };
 
-type PanelProps = { selection: EvidenceSelection; tags: TableTag[]; formatBar: ReactNode; onClose: () => void };
+type PanelProps = { selection: EvidenceSelection; tags: TableTag[]; formatBar: ReactNode; onClose: () => void; preview: EvidencePreviewApi };
 
 // Khung bằng chứng, đọc từ trên xuống: đang xem ô nào, trạng thái, nội dung, bằng chứng, nhãn.
 // Thanh định dạng dính ở đáy để luôn bấm được mà không chen vào phần đọc.
-export function EvidencePanel({ selection, tags, formatBar, onClose }: PanelProps) {
+export function EvidencePanel({ selection, tags, formatBar, onClose, preview }: PanelProps) {
   const { paper, column, count } = selection;
 
   function handleKey(event: KeyboardEvent<HTMLElement>) {
@@ -49,7 +50,7 @@ export function EvidencePanel({ selection, tags, formatBar, onClose }: PanelProp
       </header>
 
       <div className="evidence-panel__body">
-        <EvidenceContent key={`${paper.id}-${column.id}`} selection={selection} />
+        <EvidenceContent key={`${paper.id}-${column.id}`} selection={selection} preview={preview} />
         <TagSection paperId={paper.id} paperTags={paper.tags ?? []} tags={tags} />
       </div>
 
@@ -125,7 +126,7 @@ function HighlightAction({
   ) : null;
 }
 
-function EvidenceContent({ selection }: { selection: EvidenceSelection }) {
+function EvidenceContent({ selection, preview }: { selection: EvidenceSelection; preview: EvidencePreviewApi }) {
   const [showTranslation, setShowTranslation] = useState(false);
   const { paper, cell, column } = selection;
   const { addHighlight, removeHighlight, editSavedCell, updateHighlights } = useStore();
@@ -241,7 +242,7 @@ function EvidenceContent({ selection }: { selection: EvidenceSelection }) {
             onRemove={(range) => removeHighlight(target, range)}
           />
           <div className="evidence-card__meta">
-            <span className="page-chip">Trang {cell.page} của file PDF</span>
+            <EvidenceChip target={{ paper, cell, columnName: column.name }} preview={preview} />
             {cell.quote_vi ? (
               <button type="button" className="link-button" aria-expanded={showTranslation} onClick={() => setShowTranslation(!showTranslation)}>
                 {showTranslation ? "Ẩn bản dịch" : "Xem bản dịch"}

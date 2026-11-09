@@ -2,7 +2,9 @@
 
 import { useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
+import type { PdfPage } from "@/lib/pdf-read";
 import { getLabelKey, getReviewReason, type Paper, type ReviewCell } from "@/lib/types";
+import { EvidenceChip, type EvidencePreviewApi } from "./EvidencePreview";
 import { StatusBadge } from "./StatusBadge";
 
 type Props = {
@@ -11,6 +13,9 @@ type Props = {
   // Câu hỏi gợi ý kiểm tra của cột.
   question: string;
   paper: Paper;
+  // Chữ của trang (khi không còn file PDF) và khung xem trước PDF dùng chung của trang duyệt.
+  pages: PdfPage[] | null;
+  preview: EvidencePreviewApi;
   // Ô đang hiện bằng chứng ở khung bên phải.
   selected: boolean;
   register: (element: HTMLElement | null) => void;
@@ -22,7 +27,7 @@ type Props = {
   onChange: (change: Partial<Pick<ReviewCell, "value_vi" | "review">>) => void;
 };
 
-export function ReviewCard({ cell, columnName, question, paper, selected, register, onSelect, onShowPage, onConfirm, onNext, onChange }: Props) {
+export function ReviewCard({ cell, columnName, question, paper, pages, preview, selected, register, onSelect, onShowPage, onConfirm, onNext, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(cell.value_vi);
   const [error, setError] = useState<string | null>(null);
@@ -162,11 +167,8 @@ export function ReviewCard({ cell, columnName, question, paper, selected, regist
           </blockquote>
 
           <div className="evidence__meta">
-            {flagged ? (
-              <span>AI ghi trang {cell.page}, chưa xác định được</span>
-            ) : (
-              <span>Trang {cell.page} của file PDF</span>
-            )}
+            <EvidenceChip target={{ paper, cell, columnName, pages }} preview={preview} />
+            {flagged ? <span>AI ghi trang {cell.ai_page ?? cell.page}, chưa xác định được vị trí</span> : null}
             {cell.quote_vi ? (
               <button
                 type="button"

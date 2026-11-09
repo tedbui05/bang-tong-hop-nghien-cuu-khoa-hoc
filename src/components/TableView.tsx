@@ -11,6 +11,7 @@ import { useStore } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
 import { EvidencePanel } from "./EvidencePanel";
+import { chipBlur, chipKey, EvidencePreviewLayer, useEvidencePreview, type EvidenceTarget } from "./EvidencePreview";
 import { FormatBar, useCellFormatting } from "./FormatBar";
 import { StatusIcon } from "./StatusBadge";
 import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
@@ -108,6 +109,8 @@ function Sheet({ table }: { table: SheetTable }) {
   const [savedNoticeClosed, setSavedNoticeClosed] = useState(false);
   const [tagFilter, setTagFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  // Khung xem trước trang PDF khi rê chuột, Tab hoặc bấm vào nhãn bằng chứng trong ô.
+  const preview = useEvidencePreview();
   const tags = table.tags ?? [];
   const targets = selected?.cells ?? [];
   const formatting = useCellFormatting(targets, papers);
@@ -419,6 +422,19 @@ function Sheet({ table }: { table: SheetTable }) {
         onVisibleCount={setVisibleCount}
         onEdit={editSavedCell}
         onAddPaper={() => router.push("/them-bai")}
+        onEvidence={(action, paperId, columnId, anchor, event) => {
+          const paper = papers.find((item) => item.id === paperId);
+          const cell = paper?.cells.find((item) => item.column === columnId);
+          const column = columns.find((item) => item.id === columnId);
+          if (!paper || !cell || !column) return;
+          const target: EvidenceTarget = { paper, cell, columnName: column.name };
+          if (action === "enter") preview.hoverIn(target, anchor);
+          else if (action === "leave") preview.hoverOut();
+          else if (action === "focus") preview.focusIn(target, anchor);
+          else if (action === "click") preview.toggle(target, anchor);
+          else if (action === "blur" && event) chipBlur(event as globalThis.FocusEvent, preview);
+          else if (action === "key" && event) chipKey(event as globalThis.KeyboardEvent, preview);
+        }}
       />
         </div>
         {selection ? (
@@ -427,9 +443,12 @@ function Sheet({ table }: { table: SheetTable }) {
             tags={tags}
             formatBar={<FormatBar key={targets.map((target) => `${target.paperId}:${target.columnId}`).join(",")} targets={targets} papers={papers} />}
             onClose={() => setSelected(null)}
+            preview={preview}
           />
         ) : null}
       </div>
+
+      <EvidencePreviewLayer preview={preview} />
 
       <footer className="sheet-footer">
         <span>

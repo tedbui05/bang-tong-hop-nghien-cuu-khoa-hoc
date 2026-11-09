@@ -7,6 +7,7 @@ import "@/app/sheet.css";
 import { effectiveFill, formatOf } from "@/lib/cell-format";
 import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
 import { markdownToDom } from "@/lib/markdown";
+import { evidenceLabel, evidenceView } from "@/lib/evidence";
 import { cellMatchesFilter, foldText, paperMatches, splitMatches, STATUS_ICON_PATHS, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
 import { getLabelKey, isCellEdited, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
@@ -34,6 +35,14 @@ type Props = {
   onVisibleCount: (count: number) => void;
   onEdit: (paperId: string, column: TableColumn, value: string) => void;
   onAddPaper: () => void;
+  // Nhãn bằng chứng trong ô: rê chuột, rời chuột, Tab tới, rời đi, phím, bấm hoặc chạm.
+  onEvidence?: (
+    action: "enter" | "leave" | "focus" | "blur" | "key" | "click",
+    paperId: string,
+    columnId: string,
+    anchor: HTMLElement,
+    event?: Event,
+  ) => void;
 };
 
 // Thay đổi nào cần dựng lại phần tiêu đề của bảng.
@@ -181,6 +190,9 @@ export function SheetGrid(props: Props) {
           const cells = ranges[0]?.getCells().flat().filter((cell) => cell.getField()) ?? [];
           if (cells.length === 0) return;
           revealCell(cells[0]);
+          // Chỉ nhãn bằng chứng của ô đang chọn nhận phím Tab, để Tab không phải đi qua hàng trăm nhãn.
+          built.element.querySelectorAll('.ev-chip[tabindex="0"]').forEach((chip) => chip.setAttribute("tabindex", "-1"));
+          cells[0].getElement().querySelector(".ev-chip")?.setAttribute("tabindex", "0");
           latest.current.onSelection({
             paperId: String(cells[0].getRow().getIndex()),
             field: cells[0].getField(),
@@ -590,11 +602,46 @@ function formatData(cell: CellComponent, column: TableColumn, latest: RefObject<
   if (statusClass) element.classList.add(statusClass);
   if (label === "needs_review") wrapper.append(span("sheet-flag"));
   const text = span(label === "not_found" && !edited ? "sheet-text sheet-text--none" : "sheet-text");
-  text.append(statusIcon(label));
+  text.append(evidenceChip(model, paper.id, column.id, latest) ?? statusIcon(label));
   if (edited) text.append(span("sheet-edited", "đã sửa"), " ");
   textNodes(text, model.value_vi, query);
   wrapper.append(text);
   return wrapper as unknown as HTMLElement;
+}
+
+// Nhãn bằng chứng nhỏ trong ô: biểu tượng trạng thái và số trang ("tr. 9"); đọc đủ "tr. 9 · đã khớp" bằng
+// trình đọc màn hình và ở đầu khung xem trước. Ô "không tìm thấy" không có nhãn này.
+function evidenceChip(cell: ReviewCell, paperId: string, columnId: string, latest: RefObject<Props>): HTMLElement | null {
+  const text = evidenceLabel(cell);
+  const view = evidenceView(cell);
+  if (!text || view.page === null) return null;
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = `ev-chip ev-chip--grid ev-chip--${view.label}`;
+  chip.tabIndex = -1;
+  chip.setAttribute("aria-label", `${text}. Xem đoạn gốc trong file PDF`);
+  chip.setAttribute("aria-haspopup", "dialog");
+  const icon = statusIcon(view.label);
+  icon.removeAttribute("role");
+  icon.setAttribute("aria-hidden", "true");
+  chip.append(icon, document.createTextNode(`tr. ${view.page}`));
+  const send = (action: Parameters<NonNullable<Props["onEvidence"]>>[0], event?: Event) =>
+    latest.current.onEvidence?.(action, paperId, columnId, chip, event);
+  // Bấm vào nhãn chỉ mở khung xem trước: không chọn ô, không mở ô sửa.
+  for (const name of ["mousedown", "touchstart", "dblclick"]) chip.addEventListener(name, (event) => event.stopPropagation());
+  chip.addEventListener("pointerenter", (event) => event.pointerType === "mouse" && send("enter"));
+  chip.addEventListener("pointerleave", (event) => event.pointerType === "mouse" && send("leave"));
+  chip.addEventListener("focus", () => chip.matches(":focus-visible") && send("focus"));
+  chip.addEventListener("blur", (event) => send("blur", event));
+  chip.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    send("key", event);
+  });
+  chip.addEventListener("click", (event) => {
+    event.stopPropagation();
+    send("click");
+  });
+  return chip;
 }
 
 type EditorArgs = [CellComponent, (fn: () => void) => void, (value: string) => void, () => void];

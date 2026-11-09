@@ -8,6 +8,7 @@ import { canQuickApprove } from "@/lib/paper-pipeline";
 import type { PreviewState } from "@/lib/preview-state";
 import { useStore } from "@/lib/store";
 import { filledByText, getLabelKey } from "@/lib/types";
+import { EvidencePreviewLayer, useEvidencePreview } from "./EvidencePreview";
 import { EvidenceSide } from "./EvidenceSide";
 import { InfoCard } from "./InfoCard";
 import { LeaveGuard } from "./LeaveGuard";
@@ -124,6 +125,8 @@ function ReviewSession() {
   const [active, setActive] = useState(0);
   // Điện thoại: khung chữ của trang trượt lên từ dưới khi bấm "Xem chữ trang".
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Khung xem trước trang PDF khi rê chuột, Tab hoặc bấm vào nhãn bằng chứng.
+  const preview = useEvidencePreview();
 
   function applyFocus() {
     const target = focusTarget.current;
@@ -287,6 +290,8 @@ function ReviewSession() {
                 columnName={columnName(cell.column)}
                 question={reviewQuestion(cell.column)}
                 paper={session.paper}
+                pages={session.pages}
+                preview={preview}
                 selected={index === active}
                 register={(element) => {
                   cards.current[index] = element;
@@ -332,6 +337,7 @@ function ReviewSession() {
           <kbd>Enter</kbd> xác nhận và sang ô tiếp theo <kbd>E</kbd> sửa ô đang chọn
         </p>
       </main>
+      <EvidencePreviewLayer preview={preview} />
     </>
   );
 }

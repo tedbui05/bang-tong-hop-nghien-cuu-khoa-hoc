@@ -87,6 +87,10 @@
   --tag-6-ink: #334155;
   /* Bút dạ quang trong khung bằng chứng */
   --highlight: #fff0a6;
+  /* Tô vàng câu trích trên trang PDF: trong suốt để vẫn thấy chữ in bên dưới */
+  --pdf-mark: rgb(255 208 0 / 0.42);
+  --pdf-mark-line: rgb(180 83 9 / 0.75);
+  --pdf-backdrop: #525c69;
 
   --shadow-sm: 0 6px 18px rgb(15 23 42 / 0.12);
   --shadow-md: 0 8px 24px rgb(15 23 42 / 0.18);
@@ -2753,4 +2757,414 @@ textarea {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 18px;
+}
+
+/* ------------------------------------------------------------------
+   Nhãn bằng chứng ("tr. 9 · đã khớp") và khung xem trước trang PDF
+   ------------------------------------------------------------------ */
+.ev-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 1px 9px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ok-ink);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ev-chip:hover,
+.ev-chip[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ev-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ev-chip svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ev-chip--page_corrected {
+  background: var(--fix-bg);
+  color: var(--fix-ink);
+}
+
+.ev-chip--needs_review {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.ev-chip--static {
+  cursor: default;
+}
+
+.ev-chip--static:hover {
+  border-color: var(--line-strong);
+  box-shadow: none;
+}
+
+/* Trong ô của bảng: gọn hơn, nằm đầu dòng chữ thay cho biểu tượng trạng thái */
+.ev-chip--grid {
+  min-height: 0;
+  margin-right: 6px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+
+.ev-pop {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 600px;
+  max-height: 680px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+}
+
+.ev-pop__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ev-pop__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.ev-pop__column {
+  font-weight: 600;
+}
+
+.ev-pop__tools,
+.ev-zoom {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.ev-pop__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ev-pop__button:hover:not(:disabled) {
+  background: var(--soft);
+}
+
+.ev-pop__button:disabled {
+  color: var(--ink-soft);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ev-pop__button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ev-pop__button kbd {
+  font-size: 12px;
+}
+
+.ev-zoom__value {
+  min-width: 44px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ev-pop__note {
+  margin: 10px 12px 0;
+  padding: 8px 12px;
+  background: var(--soft);
+  border-radius: var(--radius);
+  line-height: 1.5;
+}
+
+.ev-pop__note--warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-weight: 600;
+}
+
+.ev-pop__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--ink-soft);
+}
+
+.ev-pop__scroll {
+  flex: 1;
+  min-height: 240px;
+  margin-top: 10px;
+  padding: 0 0 12px;
+  background: var(--pdf-backdrop);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ev-pop__missing {
+  padding: 0 0 12px;
+  overflow: auto;
+}
+
+.ev-pop__text {
+  display: flex;
+  max-height: 380px;
+  margin-top: 8px;
+}
+
+.ev-pop__quote {
+  margin: 10px 12px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--highlight);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.ev-pop__reupload {
+  margin: 12px 12px 0;
+}
+
+/* Trang PDF và lớp chữ (theo pdf.js), câu trích tô vàng */
+.pdf-page {
+  position: relative;
+  margin: 12px auto 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.pdf-page__canvas {
+  display: block;
+}
+
+.pdf-page__error {
+  padding: 16px;
+  color: var(--error-ink);
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer span,
+.textLayer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer > :not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer ::selection {
+  background: var(--accent-soft);
+  color: transparent;
+}
+
+.textLayer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  display: block;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer .pdf-mark,
+.textLayer mark.pdf-mark {
+  background: var(--pdf-mark);
+  box-shadow: 0 1px 0 var(--pdf-mark-line);
+  color: transparent;
+}
+
+.textLayer mark.pdf-mark {
+  padding: 0;
+}
+
+/* Toàn màn hình */
+.pdf-full {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  background: var(--pdf-backdrop);
+  border: 0;
+  color: var(--ink);
+}
+
+.pdf-full[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-full::backdrop {
+  background: var(--backdrop);
+}
+
+.pdf-full__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.pdf-full__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pdf-full__paper {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-full__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-full__note {
+  margin: 8px 16px 0;
+}
+
+.pdf-full__scroll {
+  /* Vị trí các trang tính theo khung này (offsetTop) */
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 24px;
+  overflow: auto;
+}
+
+.pdf-full__scroll:focus-visible {
+  outline: 2px solid var(--on-accent);
+  outline-offset: -4px;
+}
+
+.pdf-full__page {
+  margin: 16px auto 0;
+  background: var(--surface);
+}
+
+.pdf-full__page .pdf-page {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .ev-pop.ev-pop--sheet {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 82vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .ev-pop__button {
+    min-height: 40px;
+  }
+
+  .pdf-full__bar {
+    padding: 8px 12px;
+  }
+
+  .pdf-full__paper {
+    display: none;
+  }
+
+  .pdf-full__scroll {
+    padding: 0 8px 24px;
+  }
+}
+
+@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+  .ev-pop--sheet {
+    animation: sheet-rise 0.2s ease-out;
+  }
 }
