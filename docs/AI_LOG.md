@@ -186,4 +186,4 @@
     - Git đang bỏ qua file biến môi trường trên máy, `samples/`, `docs/screenshots-private/`, `.git-sao-luu-2026-11-09/`; chưa từng có commit nào chứa các file này.
     - Mọi commit ghi tên "Duy Đăng" và email Gmail, không còn tên máy.
     - Đoạn trùng dài nhất với bài báo thật là một câu trích trong test.
-  - 280 test đạt, lint và build chạy thành công. Commit 0012bdb, 8c1a130, 013c4ed, 69ed574 trên main. Chưa đẩy gì lên mạng.
+  - 280 test đạt, lint và build chạy thành công. Commit dc2be9c, de4801d, 21cd7c2, fce8e6a trên main. Chưa đẩy gì lên mạng.
