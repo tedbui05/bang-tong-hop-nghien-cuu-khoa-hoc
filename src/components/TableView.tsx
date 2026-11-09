@@ -7,7 +7,7 @@ import { exportTableToExcel } from "@/lib/export-xlsx";
 import { checkColumnName, countUnfilled, isInfoEdited, newContentColumn, removedInfoColumns, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
 import { countLabels, listLanguages, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
-import { useStore } from "@/lib/store";
+import { useStore, type CloudState } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
 import { EvidencePanel } from "./EvidencePanel";
@@ -84,6 +84,19 @@ export function TableView({ state }: { state: PreviewState }) {
   );
 }
 
+// Dòng trạng thái lưu ở chân bảng.
+function saveText(saveFailed: boolean, cloud: CloudState): string {
+  if (cloud === "offline") return "Mất mạng: thay đổi đang giữ trên trình duyệt này, app sẽ tự lưu lên máy chủ khi có mạng lại.";
+  if (cloud === "error") return "Chưa lưu được lên máy chủ, app đang thử lại. Thay đổi vẫn giữ trên trình duyệt này.";
+  if (saveFailed && cloud !== "saved" && cloud !== "saving") {
+    return "Trình duyệt đang không cho lưu, tải lại trang sẽ mất thay đổi. Hãy xuất Excel để giữ bản sao.";
+  }
+  if (cloud === "loading") return "Đang đọc dữ liệu đã lưu…";
+  if (cloud === "saving") return "Đang lưu lên máy chủ…";
+  if (cloud === "saved") return "Đã lưu lên máy chủ, gắn với trình duyệt này. Hãy xuất Excel để giữ bản sao.";
+  return "Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao.";
+}
+
 const STAT_TILES: { key: LabelKey; label: string }[] = [
   { key: "verified", label: "Đã khớp" },
   { key: "page_corrected", label: "Đã sửa số trang" },
@@ -93,7 +106,7 @@ const STAT_TILES: { key: LabelKey; label: string }[] = [
 
 function Sheet({ table }: { table: SheetTable }) {
   const router = useRouter();
-  const { tables, setActiveTable, savedTitle, saveFailed, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
+  const { tables, setActiveTable, savedTitle, saveFailed, cloud, syncNow, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
   const { papers, columns } = table;
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -102,6 +115,8 @@ function Sheet({ table }: { table: SheetTable }) {
   const [wrap, setWrap] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [exportNote, setExportNote] = useState(false);
+  // Xuất lúc chưa lưu được lên máy chủ: file vẫn có đủ dữ liệu đang thấy, nhưng nhắc rằng máy chủ chưa có bản này.
+  const [exportUnsynced, setExportUnsynced] = useState(false);
   const [selected, setSelected] = useState<SheetSelection | null>(null);
   const [visibleCount, setVisibleCount] = useState(papers.length);
   const [menu, setMenu] = useState<{ columnId: string; anchor: DOMRect } | null>(null);
@@ -167,6 +182,7 @@ function Sheet({ table }: { table: SheetTable }) {
 
   const notice =
     (exportNote ? "Chưa tạo được file Excel. Hãy thử lại; nếu vẫn lỗi, tải lại trang rồi xuất lần nữa." : null) ??
+    (exportUnsynced ? "Đã xuất file Excel. Lưu ý: một vài thay đổi mới nhất chưa lưu được lên máy chủ vì mất mạng; app sẽ tự lưu khi có mạng lại." : null) ??
     columnNotice ??
     (savedTitle && !savedNoticeClosed ? `Đã lưu vào bảng: ${savedTitle}` : null);
 
@@ -364,8 +380,12 @@ function Sheet({ table }: { table: SheetTable }) {
           onClick={async () => {
             setExporting(true);
             setExportNote(false);
+            setExportUnsynced(false);
             try {
+              // Lưu hết lên máy chủ trước, để file Excel đúng bằng dữ liệu đã lưu.
+              const synced = cloud === "local" ? true : await syncNow();
               await exportTableToExcel(table);
+              if (!synced) setExportUnsynced(true);
             } catch {
               setExportNote(true);
             } finally {
@@ -451,10 +471,8 @@ function Sheet({ table }: { table: SheetTable }) {
         <span>
           Đang hiện {visibleCount}/{papers.length} bài
         </span>
-        <span className={saveFailed ? "sheet-footer__error" : undefined}>
-          {saveFailed
-            ? "Trình duyệt đang không cho lưu, tải lại trang sẽ mất thay đổi. Hãy xuất Excel để giữ bản sao."
-            : "Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao."}
+        <span className={saveFailed || cloud === "offline" || cloud === "error" ? "sheet-footer__error" : undefined} role="status">
+          {saveText(saveFailed, cloud)}
         </span>
       </footer>
 

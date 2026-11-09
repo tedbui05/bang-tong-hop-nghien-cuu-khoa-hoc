@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tình trạng dự án
 
-Luồng chính đã nối (9/11/2026): tải bài (nhiều file, hàng chờ) → gọi `/api/dien-bang` → kiểm tra câu trích bằng `verifyCells` → màn hình duyệt → lưu vào bảng. Bảng mẫu vẫn còn dữ liệu minh hoạ. Chưa có cơ sở dữ liệu cho bảng: bảng nằm trong `localStorage`, file PDF và bài chờ duyệt nằm trong IndexedDB. Supabase mới dùng cho đăng nhập ẩn danh và đếm lượt gọi AI; phải cài theo `docs/cai-dat-supabase.md` thì mới gọi được AI thật.
+Luồng chính đã nối (9/11/2026): tải bài (nhiều file, hàng chờ) → gọi `/api/dien-bang` → kiểm tra câu trích bằng `verifyCells` → màn hình duyệt → lưu vào bảng. Bảng mẫu vẫn còn dữ liệu minh hoạ. Supabase dùng cho đăng nhập ẩn danh, đếm lượt gọi AI, lưu bảng và bài (`sheet_tables`, `sheet_papers`) và thao tác (`app_events`); cài theo `docs/cai-dat-supabase.md`. `localStorage` vẫn giữ bản sao của bảng để mất mạng không mất thay đổi. File PDF và bài chờ duyệt chỉ nằm trong IndexedDB của trình duyệt, không gửi lên máy chủ.
 
 Lệnh:
 
@@ -12,12 +12,13 @@ Lệnh:
 - Build: `npm run build`
 - Lint: `npm run lint`
 - Test: `npm test` (vitest, file `*.test.ts` nằm cạnh code trong `src/`)
+- Test phân quyền trên Supabase thật: `npm run test:phan-quyen` (tạo hai người dùng ẩn danh tạm, thử đọc, sửa, xoá chéo, rồi xoá họ)
 
 ## Kiến trúc
 
 Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 
-- `src/app/`: 4 trang: `/` (bảng tổng hợp), `/tao-bang`, `/them-bai`, `/duyet-bai`.
+- `src/app/`: 5 trang: `/` (bảng tổng hợp), `/tao-bang`, `/them-bai`, `/duyet-bai`, `/metrics` (số liệu đo hiệu quả, cần mật khẩu).
 - `src/components/`: mỗi trang có một view (`TableView`, `CreateTableView`, `AddPaperView`, `ReviewView`) và các phần dùng chung.
 - `src/lib/columns.ts`: bộ cột gợi ý và các hàm với cột (kiểm tra tên, đổi chỗ, đếm ô sẽ mất). Cột không còn là danh sách cố định: mỗi bảng tự giữ `columns` trong store. Ô và cột nhận biết nhau bằng mã cột (`AiCell.column`), không bằng tên, nên đổi tên không mất dữ liệu.
 - `src/components/ColumnMenu.tsx`: menu mở khi bấm tiêu đề cột. Bấm tiêu đề không còn tự sắp xếp, sắp xếp nằm trong menu.
@@ -49,7 +50,10 @@ Next.js App Router, TypeScript, CSS thường trong `src/app/globals.css`.
 - `scripts/copy-pdfjs-assets.mjs` chạy trước `dev` và `build`, chép worker và bộ mã chữ (cMap, cần cho bài tiếng Trung, Nhật, Hàn) của pdf.js vào `public/pdfjs/` (không đưa vào git).
 - `src/test/make-pdf.ts`: tự dựng PDF mẫu cho test (có chữ, chỉ có ảnh, có mật khẩu theo chuẩn mã hoá RC4 40-bit), không lưu file nhị phân vào git. Chỉ có chữ Latin vì dùng phông Helvetica có sẵn.
 - `src/lib/types.ts`: kiểu dữ liệu theo skill `citation-check`.
-- `src/lib/events.ts`: ghi thao tác, hiện chỉ in ra console. Thao tác `dung_model_du_phong` đếm số lần bài được điền bằng model dự phòng.
+- `src/lib/events.ts`: ghi thao tác vào hàng chờ trong `localStorage` rồi gửi lên bảng `app_events`; gửi lỗi (mất mạng, chưa có phiên) thì giữ lại gửi sau. Thao tác `dung_model_du_phong` do máy chủ ghi (`recordServerEvent` trong `dien-bang-handler.ts`), đếm số lần bài được điền bằng model dự phòng. Người dùng có thể tự ghi thao tác giả của chính mình (giới hạn 3000 mỗi 24 giờ), nên số liệu chỉ để tham khảo.
+- Lưu lên máy chủ (`src/lib/cloud-sync.ts`, nối ở `store.tsx`, gọi Supabase ở `supabase-browser.ts`): bảng là một dòng `sheet_tables` (cột, nhãn dạng JSON), mỗi bài là một dòng `sheet_papers` (cả bài dạng JSON); chỉ gửi dòng đã đổi. Người chỉ xem bảng mẫu thì chưa đăng nhập, chưa lưu gì; lần đầu có dữ liệu riêng mới đăng nhập ẩn danh. Mở app: còn thay đổi chưa lưu lên máy chủ thì gửi bản trình duyệt lên, không thì dùng bản máy chủ; máy chủ trống mà trình duyệt có dữ liệu cũ thì chuyển lên (`chooseStart`). Lỗi thì giữ trên trình duyệt, thử lại sau 20 giây và khi có mạng lại; chân bảng ghi trạng thái lưu. "Đặt lại dữ liệu mẫu" xoá cả dữ liệu trên máy chủ. Xuất Excel lưu hết lên máy chủ trước; chưa lưu được thì vẫn xuất và nhắc. Quy tắc phân quyền và giới hạn số dòng ở `supabase/sql/du-lieu-bang.sql`; giới hạn số dòng đặt ở trigger `gioi_han_so_dong`, vì chính sách đếm dòng của chính bảng đó bị Postgres báo vòng lặp (42P17).
+- Báo mất mạng (`src/components/NetworkBanner.tsx`): dải báo trên mọi trang khi trình duyệt mất mạng.
+- Trang `/metrics` (`src/components/MetricsView.tsx`, `src/lib/metrics.ts`, `src/lib/metrics-handler.ts`, `src/app/api/metrics/route.ts`): chỉ số tính từ hàm `metrics_counts` (chỉ khoá bí mật gọi được, chỉ trả số đếm). Cần mật khẩu `METRICS_MAT_KHAU` ở máy chủ, ít nhất 12 ký tự; chưa đặt thì trang bị khoá; sai mật khẩu thì chờ 1 giây.
 - `PreviewBar` và `?trang-thai=dang-tai|loi|trong`: chỉ để xem thử trạng thái, bỏ khi nối dữ liệu thật. Trang duyệt vẫn có "Xem bài mẫu" (bài minh hoạ, không qua AI, không giữ lại).
 
 Quy ước phông: chữ lấy từ bài báo dùng `.source-text` (IBM Plex Serif), lời của AI và giao diện dùng IBM Plex Sans.
@@ -141,7 +145,7 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 
 ## Việc cần làm sau
 
-- Cài Supabase theo `docs/cai-dat-supabase.md` (tạo dự án, bật đăng nhập ẩn danh, chạy SQL, điền 3 biến môi trường). Chưa cài thì app không gọi được AI thật. Nên bật CAPTCHA cho đăng nhập ẩn danh trước khi mời nhiều người dùng thử.
+- Chạy `supabase/sql/du-lieu-bang.sql` trên Supabase (bước 3b của `docs/cai-dat-supabase.md`), đặt `METRICS_MAT_KHAU`, rồi chạy `npm run test:phan-quyen`. Phần đăng nhập ẩn danh và đếm lượt AI đã cài xong và chạy thật ngày 9/11/2026. Nên bật CAPTCHA cho đăng nhập ẩn danh trước khi mời nhiều người dùng thử.
 - Xoá thư mục `.git-sao-luu-2026-11-09` (bản sao lưu `.git` trước khi dọn lịch sử ngày 9/11/2026, vẫn còn ảnh có trang bài mẫu) sau khi đẩy git lên GitHub lần đầu thành công. Người dùng tự xoá, vì hook an toàn chặn Claude xoá thư mục.
 - Đã chạy 3 bài trong `samples/` bằng `gemini-3.6-flash` ngày 9/11/2026, toàn bộ câu trả lời nằm trong `samples/ket-qua-gemini.json`. Còn lại: thử thêm trên bài thật khác, nhất là xem cột Câu hỏi và Kết quả còn hay trích từ phần tóm tắt không.
 

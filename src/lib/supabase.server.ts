@@ -3,6 +3,7 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AiUsageStore } from "./ai-limit";
+import type { MetricsRow } from "./metrics";
 
 function url() {
   return process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
@@ -65,6 +66,38 @@ export function supabaseUsageStore(): AiUsageStore | null {
     async release(userId, day) {
       const { error } = await client.rpc("release_ai_call", { p_user: userId, p_day: day });
       if (error) console.error("[supabase] lỗi khi trả lượt:", error.code);
+    },
+  };
+}
+
+// Ghi một thao tác do máy chủ biết (ví dụ dùng model dự phòng) vào bảng app_events, đứng tên người dùng đã gọi.
+export async function recordServerEvent(userId: string, event: string, detail: Record<string, string | number>): Promise<void> {
+  const client = secretClient();
+  if (!client) return;
+  const { error } = await client.from("app_events").insert({ owner_id: userId, event, detail: { ...detail, luc: new Date().toISOString() } });
+  if (error) console.error("[supabase] lỗi khi ghi thao tác:", error.code);
+}
+
+// Đếm thao tác cho trang /metrics (hàm metrics_counts, chỉ khoá bí mật gọi được). null: chưa cài đặt.
+export function supabaseMetrics(): { counts: (from: string, to: string) => Promise<MetricsRow[]>; aiCalls: (fromDay: string) => Promise<number> } | null {
+  const client = secretClient();
+  if (!client) return null;
+  return {
+    async counts(from, to) {
+      const { data, error } = await client.rpc("metrics_counts", { p_from: from, p_to: to });
+      if (error) {
+        console.error("[supabase] lỗi khi đọc số liệu:", error.code);
+        throw new Error("không đọc được số liệu");
+      }
+      return (data ?? []) as MetricsRow[];
+    },
+    async aiCalls(fromDay) {
+      const { data, error } = await client.from("ai_usage_total").select("count").gte("day", fromDay);
+      if (error) {
+        console.error("[supabase] lỗi khi đọc lượt AI:", error.code);
+        throw new Error("không đọc được lượt AI");
+      }
+      return (data ?? []).reduce((total, row) => total + Number(row.count), 0);
     },
   };
 }

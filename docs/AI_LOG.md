@@ -107,3 +107,32 @@
     - Thiếu thông báo lỗi khi không mở được trang PDF; khung chữ của trang tự cuộn về đầu khi trang vẽ lại; nhãn trong bảng bị vẽ lại làm khung xem trước nằm lại; bài chờ duyệt không có nút bỏ.
   - Khi chạy lại trên trình duyệt để kiểm tra các chỗ đã sửa, AI phát hiện thêm một lỗi do chính mình gây ra: bài không có file PDF thì Tab không vào được khung xem trước vì nhảy vào nút đang bị khoá. Đã sửa.
   - Việc để sau: giới hạn số lần gọi AI theo người dùng khi có đăng nhập ẩn danh (hiện ai biết đường dẫn cũng gọi được, nhưng key không bị lộ).
+
+## 2026-11-09 20:59 — Chặn gọi AI tràn lan, cài Supabase, hoàn thành các mục Phiên 6
+
+- **Đã nhờ AI làm gì:**
+  - Chặn gọi AI tràn lan: phải có phiên đăng nhập hợp lệ (kể cả ẩn danh), giới hạn số bài mỗi người mỗi ngày và tổng cả app mỗi ngày, đếm ở máy chủ, viết test cho bốn trường hợp (chưa đăng nhập, hết lượt của một người, hết lượt cả app, người khác vẫn dùng được).
+  - Sau khi người dùng tự cài Supabase: kiểm tra kết nối và đăng nhập ẩn danh, gọi AI thật đúng một lần, xem bộ đếm, chạy test phân quyền. Không mở file biến môi trường, không in khoá.
+  - Đối chiếu 10 mục Phiên 6, báo theo bảng rồi làm các mục còn thiếu; SQL cần chạy thì đưa cho người dùng tự chạy.
+- **AI đề xuất gì:**
+  - Giới hạn tạm 15 bài mỗi người, 150 bài cả app mỗi ngày (đổi được bằng biến môi trường), ngày tính theo giờ Việt Nam. Bộ đếm là hai bảng và hai hàm trong Postgres, chỉ khoá bí mật của máy chủ gọi được.
+  - Lưu dữ liệu: mỗi bảng tổng hợp là một dòng `sheet_tables`, mỗi bài là một dòng `sheet_papers` (cả bài dạng JSON), thao tác ở `app_events`. Phân quyền theo chủ sở hữu từng dòng. Chỉ gửi dòng đã đổi. `localStorage` vẫn giữ bản sao để mất mạng không mất thay đổi. File PDF không gửi lên.
+  - Người chỉ xem bảng mẫu thì chưa đăng nhập ẩn danh; lần đầu có dữ liệu riêng mới đăng nhập, để không tạo danh tính thừa. Dữ liệu cũ trên trình duyệt tự chuyển lên máy chủ.
+  - Trang `/metrics` khoá bằng mật khẩu `METRICS_MAT_KHAU` đặt ở máy chủ; chỉ trả số đếm, không có nội dung ô hay mã người dùng.
+  - Dải báo mất mạng trên mọi trang; chân bảng ghi trạng thái lưu lên máy chủ; xuất Excel lưu hết lên máy chủ trước.
+  - Lệnh `npm run test:phan-quyen` chạy trên Supabase thật: tạo hai người dùng ẩn danh tạm, thử đọc, sửa, xoá, giả danh chéo nhau, rồi xoá họ.
+- **Chấp nhận hay sửa gì, vì sao:**
+  - Người dùng tự cài Supabase, tự chạy hai file SQL và tự thêm biến môi trường, không đưa khoá cho AI; không nêu lý do.
+  - Chấp nhận bảng đối chiếu và cách làm các mục còn thiếu; không nêu lý do.
+  - Người dùng dặn ghi vào nhật ký lỗi vòng lặp 42P17 và chuyện test đạt vì lý do sai.
+- **AI đã sai ở đâu:**
+  - SQL bản đầu đặt giới hạn số dòng mỗi người (200 bảng, 5000 bài, 3000 thao tác mỗi ngày) ngay trong quy tắc phân quyền "được thêm dòng". Quy tắc đó đếm dòng của chính bảng nó bảo vệ nên Postgres báo vòng lặp (lỗi 42P17) và chặn mọi lần thêm, kể cả của chính chủ. Nếu đem dùng thì app không lưu được gì lên máy chủ. Lệnh `test:phan-quyen` bắt được lỗi này; AI chuyển giới hạn sang trigger, người dùng phải chạy lại file SQL.
+  - Ở lần chạy lỗi đó, nhiều mục "người khác bị chặn" vẫn báo ĐẠT, nhưng là vì câu lệnh hỏng do vòng lặp, không phải vì phân quyền chặn. Test chỉ kiểm tra "có lỗi" chứ không kiểm tra đúng loại lỗi. Đã sửa: mục bị chặn chỉ tính đạt khi lỗi là thiếu quyền (mã 42501).
+  - Bảng tổng hợp chỉ hiện 7 trên 8 bài khi dữ liệu từ máy chủ về lúc trang bảng đang mở, vì bảng chỉ vẽ lại các dòng đã có, không thêm dòng mới. Phát hiện khi chạy thử luồng "xoá bản sao trên trình duyệt rồi đọc lại từ máy chủ"; đã sửa.
+  - Chạy `npm run build` trong lúc `npm run dev` đang chạy làm trang `/api/metrics` của bản dev trả lỗi 500 một lần.
+  - Hai lần báo lỗi khi chạy thử là do script thử của AI (đọc sai chỗ trên trang, đếm dòng trước khi bảng vẽ xong), không phải lỗi của app.
+- **Kết quả chạy thật (9/11/2026):**
+  - Gọi `/api/dien-bang` khi chưa đăng nhập, với phiên giả, hoặc chỉ với khoá công khai: đều bị từ chối (401). Đã đăng nhập: gọi AI được; `ai_usage_user`, `ai_usage_total` đếm đúng. Lần chạy luồng, model chính quá tải nên app chuyển sang model dự phòng, và máy chủ ghi đúng một thao tác "dùng model dự phòng".
+  - `test:phan-quyen` đạt cả 27 mục. Câu kiểm tra trong SQL Editor: 5 bảng đều bật phân quyền.
+  - Luồng: lưu bài lên máy chủ; tải lại trang vẫn còn; xoá bản sao trên trình duyệt vẫn đọc lại đủ từ máy chủ; lúc mất mạng có dải báo và máy chủ chưa có thay đổi, có mạng lại thì tự lưu; Excel có số dòng bằng số bài trên máy chủ; `/metrics` sai mật khẩu bị từ chối, đúng mật khẩu thì hiện số liệu, khổ điện thoại không cuộn ngang.
+  - 263 test đạt, lint và build chạy thành công. Khoá bí mật không có trong code gửi cho trình duyệt.

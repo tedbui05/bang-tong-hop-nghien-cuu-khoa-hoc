@@ -12,6 +12,8 @@ export type HandlerDeps = {
   limits: AiLimits;
   extract: (input: ExtractBody) => Promise<ExtractResult>;
   now?: () => number;
+  // Ghi thao tác vào bảng app_events (dùng model dự phòng). Lỗi khi ghi không làm hỏng kết quả trả về.
+  recordEvent?: (userId: string, event: "dung_model_du_phong", detail: Record<string, string | number>) => Promise<void>;
 };
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -69,5 +71,8 @@ export async function handleDienBang(request: Request, deps: HandlerDeps): Promi
     return json({ ok: false, error: { code: "failed", title: "Chưa gọi được AI", detail: "Có lỗi khi gửi bài cho AI. Hãy thử lại sau ít phút.", retry: true }, attempts: 0, usedFallback: false }, 500);
   }
   if (result.attempts === 0) await deps.store.release(userId, day).catch(() => undefined);
+  if (result.usedFallback && deps.recordEvent) {
+    await deps.recordEvent(userId, "dung_model_du_phong", { model: result.ok ? result.model : "", ket_qua: result.ok ? "duoc" : "loi" }).catch(() => undefined);
+  }
   return json(result);
 }

@@ -229,6 +229,14 @@ export function SheetGrid(props: Props) {
     const before = shownPapers.current;
     shownPapers.current = props.papers;
     if (!ready || !table || before === props.papers) return;
+    // Thêm, bớt hoặc đổi thứ tự bài (ví dụ dữ liệu vừa đọc từ máy chủ về khi trang bảng đang mở): nạp lại cả bảng.
+    const ids = (list: typeof before) => list.map((paper) => paper.id).join("\u0000");
+    if (ids(before) !== ids(props.papers)) {
+      void table.replaceData(props.papers.map((paper) => toRow(paper, latest.current.columns, latest.current.tags))).then(() => {
+        if (tableRef.current === table) refreshLetters(table);
+      });
+      return;
+    }
     props.papers.forEach((paper) => {
       if (before.find((item) => item.id === paper.id) === paper) return;
       const row = table.getRow(paper.id);

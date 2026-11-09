@@ -6,7 +6,7 @@ import { readAiLimits } from "@/lib/ai-limit";
 import { handleDienBang } from "@/lib/dien-bang-handler";
 import { callGemini, geminiModels } from "@/lib/gemini.server";
 import { sampleAnswer, sampleAnswersEnabled } from "@/lib/sample-answer.server";
-import { supabaseUsageStore, verifySupabaseUser } from "@/lib/supabase.server";
+import { recordServerEvent, supabaseUsageStore, verifySupabaseUser } from "@/lib/supabase.server";
 
 // Chờ AI đọc bài có thể mất vài phút.
 export const maxDuration = 300;
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     verifyUser: verifySupabaseUser,
     store: supabaseUsageStore(),
     limits: readAiLimits(process.env),
+    recordEvent: recordServerEvent,
     // Lỗi đã được đổi thành câu tiếng Việt nằm trong kết quả, trang web đọc trường ok để biết.
     extract: (input) => extractPaper(input.columns, input.pages, callGemini, geminiModels()),
   });

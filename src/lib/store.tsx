@@ -3,20 +3,46 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { addHighlightRange, withFormat, withRowFill } from "./cell-format";
 import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_ID } from "./columns";
-import { logEvent } from "./events";
+import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, type Snapshot } from "./cloud-sync";
+import { logEvent, scheduleFlush, setEventSender } from "./events";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
 import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
 import { readPdfInBrowser } from "./pdf-browser";
 import { processPaper, type FileMeta } from "./process-paper";
-import { getAccessToken } from "./supabase-browser";
+import { cloudConfigured, currentUserId, getAccessToken, sendEvents, supabaseRemote } from "./supabase-browser";
 import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
 // Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
 // Khi có cơ sở dữ liệu thì thay phần đọc và ghi này. Bài AI đã điền nhưng chưa lưu vào bảng (kể cả phần đã duyệt dở)
 // được giữ riêng trong IndexedDB (paper-files.ts), vì mất là tốn thêm một lượt AI.
 const STORAGE_KEY = "tcb-bang-v1";
+// Có thay đổi trên trình duyệt chưa lưu lên máy chủ (ví dụ lúc mất mạng). Mở lại app thì gửi bản trình duyệt lên trước.
+const DIRTY_KEY = "tcb-bang-chua-luu-may-chu";
+const PRISTINE = JSON.stringify([sampleTable]);
+
+// Trạng thái lưu lên máy chủ (Supabase). local: chưa cài Supabase hoặc chưa có dữ liệu riêng nên chỉ giữ trên trình duyệt.
+export type CloudState = "local" | "loading" | "saving" | "saved" | "offline" | "error";
+
+function readDirty(): boolean {
+  try {
+    return window.localStorage.getItem(DIRTY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeDirty(dirty: boolean) {
+  try {
+    if (dirty) window.localStorage.setItem(DIRTY_KEY, "1");
+    else window.localStorage.removeItem(DIRTY_KEY);
+  } catch {
+    // Trình duyệt chặn bộ nhớ: bỏ qua.
+  }
+}
+
+const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
 function readSaved(): { tables: SheetTable[]; activeId: string | null } | null {
   try {
@@ -108,6 +134,9 @@ type Store = {
   // Đã đọc xong dữ liệu trong trình duyệt chưa.
   hydrated: boolean;
   saveFailed: boolean;
+  cloud: CloudState;
+  // Lưu ngay mọi thay đổi lên máy chủ (trước khi xuất Excel). true: máy chủ đã có đúng dữ liệu đang thấy.
+  syncNow: () => Promise<boolean>;
   resetData: () => void;
 };
 
@@ -191,6 +220,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const skipReset = useRef(false);
+  const [cloud, setCloud] = useState<CloudState>("local");
+  // Bản dữ liệu đang có trên máy chủ. null: chưa đọc từ máy chủ (chưa bắt đầu đồng bộ).
+  const snapshot = useRef<Snapshot | null>(null);
+  const cloudStarted = useRef(false);
+  // Dữ liệu đọc từ trình duyệt lúc mở app, để biết sau đó có thay đổi thật chưa.
+  const loadedJson = useRef(PRISTINE);
+  const syncing = useRef<Promise<boolean> | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bước xử lý hàng chờ cần bảng mới nhất (cột có thể đổi trong lúc chờ).
   useEffect(() => {
@@ -200,15 +237,82 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Máy chủ không có dữ liệu trình duyệt nên chỉ đọc được sau khi trang đã hiện.
   useEffect(() => {
     const saved = readSaved();
-    /* eslint-disable react-hooks/set-state-in-effect -- phải đọc sau khi hiện trang để khớp với máy chủ */
+    // Phải đọc sau khi hiện trang để khớp với máy chủ.
     if (saved) {
       setTables(saved.tables);
       setActiveId(saved.activeId);
+      loadedJson.current = JSON.stringify(saved.tables);
     }
     setHydrated(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
+  // Gửi phần đã đổi lên máy chủ. Lỗi thì giữ trên trình duyệt và thử lại sau.
+  const sync = useCallback(async function syncOnce(): Promise<boolean> {
+    if (!snapshot.current) return false;
+    if (syncing.current) {
+      await syncing.current;
+      return syncOnce();
+    }
+    const run = (async () => {
+      const current = tablesRef.current;
+      const plan = planSync(snapshot.current!, current);
+      if (isEmptyPlan(plan)) {
+        if (tablesRef.current === current) writeDirty(false);
+        setCloud("saved");
+        return true;
+      }
+      setCloud("saving");
+      try {
+        await supabaseRemote.apply(plan);
+        snapshot.current = snapshotOf(current);
+        if (tablesRef.current === current) writeDirty(false);
+        setCloud("saved");
+        return true;
+      } catch {
+        setCloud(isOffline() ? "offline" : "error");
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(() => void syncOnce(), 20000);
+        return false;
+      }
+    })();
+    syncing.current = run;
+    try {
+      return await run;
+    } finally {
+      syncing.current = null;
+    }
+  }, []);
+
+  // Đọc dữ liệu trên máy chủ và chọn bản làm gốc (xem chooseStart trong cloud-sync.ts).
+  const start = useCallback(async function startOnce(): Promise<void> {
+    if (cloudStarted.current) return;
+    cloudStarted.current = true;
+    setCloud("loading");
+    try {
+      const remote = await supabaseRemote.load();
+      const remoteTables = fromRows(remote.tables, remote.papers);
+      const localHasData = JSON.stringify(tablesRef.current) !== PRISTINE;
+      const choice = chooseStart(remoteTables.length > 0, localHasData, readDirty());
+      snapshot.current = snapshotOf(remoteTables);
+      if (choice === "use_remote") {
+        tablesRef.current = remoteTables;
+        setTables(remoteTables);
+        setActiveId((current) => (remoteTables.some((table) => table.id === current) ? current : (remoteTables[0]?.id ?? null)));
+        writeDirty(false);
+        setCloud("saved");
+      } else if (choice === "push_local") {
+        // Kể cả dữ liệu đã có trên trình duyệt từ trước khi có máy chủ: chuyển hết lên.
+        await sync();
+      } else {
+        setCloud("saved");
+      }
+    } catch {
+      cloudStarted.current = false;
+      setCloud(isOffline() ? "offline" : "error");
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      retryTimer.current = setTimeout(() => void startOnce(), 20000);
+    }
+  }, [sync]);
   useEffect(() => {
     if (!hydrated || skipReset.current) return;
     const timer = setTimeout(() => {
@@ -218,12 +322,65 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         setSaveFailed(true);
       }
+      if (!cloudConfigured()) return;
+      if (snapshot.current) {
+        writeDirty(true);
+        void sync();
+      } else {
+        const json = JSON.stringify(tables);
+        // Đổi gì đó trước khi đọc xong máy chủ: đánh dấu để bản trình duyệt được gửi lên.
+        if (json !== loadedJson.current) writeDirty(true);
+        // Có dữ liệu riêng (sửa bảng mẫu, tạo bảng, lưu bài, hoặc dữ liệu cũ trên trình duyệt): đăng nhập ẩn danh và lưu lên máy chủ.
+        if (json !== PRISTINE) void start();
+      }
     }, 200);
     return () => clearTimeout(timer);
-  }, [hydrated, tables, activeId]);
+  }, [hydrated, tables, activeId, sync, start]);
 
-  const resetData = useCallback(() => {
+
+  // Có phiên đăng nhập từ trước thì đọc dữ liệu trên máy chủ ngay khi mở app.
+  useEffect(() => {
+    if (!hydrated || !cloudConfigured()) return;
+    setEventSender((items) => sendEvents(items));
+    void currentUserId().then((userId) => {
+      if (userId) void start();
+    });
+    const online = () => {
+      scheduleFlush(0);
+      if (snapshot.current) void sync();
+      else if (JSON.stringify(tablesRef.current) !== PRISTINE || readDirty()) void start();
+    };
+    const offline = () => setCloud((current) => (current === "local" ? current : "offline"));
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
+  }, [hydrated, sync, start]);
+
+  const syncNow = useCallback(async () => {
+    if (!cloudConfigured()) return false;
+    if (!snapshot.current) {
+      await start();
+      return snapshot.current !== null && !readDirty();
+    }
+    return sync();
+  }, [sync, start]);
+
+  const resetData = useCallback(async () => {
+    // Dữ liệu đã lưu lên máy chủ cũng phải xoá, không thì mở lại app sẽ đọc lại từ máy chủ.
+    if (snapshot.current) {
+      try {
+        await supabaseRemote.clear();
+      } catch {
+        window.alert("Chưa xoá được dữ liệu trên máy chủ. Hãy kiểm tra kết nối mạng rồi thử lại.");
+        return;
+      }
+    }
     skipReset.current = true;
+    writeDirty(false);
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -746,6 +903,8 @@ formatCells,
       deleteTag,
       hydrated,
       saveFailed,
+      cloud,
+      syncNow,
       resetData,
       editSavedCell,
     }),
@@ -784,6 +943,8 @@ formatCells,
       deleteTag,
       hydrated,
       saveFailed,
+      cloud,
+      syncNow,
       resetData,
       editSavedCell,
     ],

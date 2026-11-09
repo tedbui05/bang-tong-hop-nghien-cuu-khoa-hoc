@@ -155,3 +155,28 @@ describe("đọc giới hạn từ biến môi trường", () => {
     expect(vietnamDay(Date.UTC(2026, 10, 9, 17, 0))).toBe("2026-11-10");
   });
 });
+
+describe("ghi thao tác dùng model dự phòng", () => {
+  it("ghi một thao tác đứng tên người gọi khi bài được điền bằng model dự phòng", async () => {
+    const { deps } = setup(undefined, { ...okResult, model: "model-du-phong", usedFallback: true, attempts: 2 });
+    const recordEvent = vi.fn(async () => undefined);
+    const response = await handleDienBang(request("phien-an"), { ...deps, recordEvent });
+    expect(response.status).toBe(200);
+    expect(recordEvent).toHaveBeenCalledWith("an", "dung_model_du_phong", { model: "model-du-phong", ket_qua: "duoc" });
+  });
+
+  it("không ghi khi dùng model chính, và lỗi khi ghi không làm hỏng kết quả", async () => {
+    const { deps } = setup();
+    const recordEvent = vi.fn(async () => undefined);
+    await handleDienBang(request("phien-an"), { ...deps, recordEvent });
+    expect(recordEvent).not.toHaveBeenCalled();
+
+    const fallback = setup(undefined, { ok: false, error: { code: "overloaded", title: "", detail: "", retry: true }, attempts: 2, usedFallback: true });
+    const failing = vi.fn(async () => {
+      throw new Error("mất mạng");
+    });
+    const response = await handleDienBang(request("phien-an"), { ...fallback.deps, recordEvent: failing });
+    expect(response.status).toBe(200);
+    expect(failing).toHaveBeenCalledWith("an", "dung_model_du_phong", { model: "", ket_qua: "loi" });
+  });
+});
