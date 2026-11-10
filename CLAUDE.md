@@ -161,7 +161,6 @@ Bản này CHƯA làm những việc sau. Nếu thấy cần làm việc nào, p
 
 ## Việc cần làm sau
 
-- Chạy `supabase/sql/phien-ban.sql` trên Supabase (bước 3c của `docs/cai-dat-supabase.md`) rồi chạy `npm run test:phan-quyen` để kiểm tra phân quyền của `sheet_versions`. Trước đó, lịch sử phiên bản báo "Máy chủ chưa có bảng lưu phiên bản".
 - Tải lại bản gốc của `samples/lin-et-al-2023-…pdf`: file bị sửa lúc 08:44 ngày 10/11/2026 (thêm ký tự xuống dòng trước `%PDF`, pdf.js báo Invalid Root reference), hai test chữ thật của bài này báo lỗi cho tới khi có lại file gốc.
 - Chạy `supabase/sql/du-lieu-bang.sql` trên Supabase (bước 3b của `docs/cai-dat-supabase.md`), đặt `METRICS_MAT_KHAU`, rồi chạy `npm run test:phan-quyen`. Phần đăng nhập ẩn danh và đếm lượt AI đã cài xong và chạy thật ngày 9/11/2026. Nên bật CAPTCHA cho đăng nhập ẩn danh trước khi mời nhiều người dùng thử.
 - Xoá thư mục `.git-sao-luu-2026-11-09` (bản sao lưu `.git` trước khi dọn lịch sử ngày 9/11/2026, vẫn còn ảnh có trang bài mẫu) sau khi đẩy git lên GitHub lần đầu thành công. Người dùng tự xoá, vì hook an toàn chặn Claude xoá thư mục.

@@ -48,6 +48,8 @@ select policyname, cmd, qual, with_check from pg_policies where tablename = 'she
 select grantee, privilege_type from information_schema.role_table_grants where table_name = 'sheet_versions' order by grantee, privilege_type;
 ```
 
+Nếu `npm run test:phan-quyen` báo PGRST205 (không thấy bảng) dù câu kiểm tra ở trên đã đúng, chạy `notify pgrst, 'reload schema';` trong SQL Editor để Supabase nạp lại danh sách bảng, rồi chạy lại.
+
 Sau đó chạy `npm run test:phan-quyen`: có thêm các mục kiểm tra chéo cho `sheet_versions` (người khác không đọc, không xoá, không thêm đứng tên mình; không ai sửa được; tự lưu chỉ giữ 30 bản).
 
 ## 4. Lấy địa chỉ và khoá
