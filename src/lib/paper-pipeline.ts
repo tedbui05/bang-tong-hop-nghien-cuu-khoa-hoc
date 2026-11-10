@@ -14,6 +14,8 @@ export type ReviewSession = {
   pages: PdfPage[] | null;
   cells: ReviewCell[];
   infoConfirmed: boolean;
+  // Đã ghi số liệu của bước duyệt (lúc bấm "Lưu vào bảng"). Hoàn tác việc lưu rồi lưu lại thì không ghi thêm lần nữa.
+  logged?: boolean;
 };
 
 // Lỗi hiện trên dòng của bài trong hàng chờ. retry: có nút Thử lại.

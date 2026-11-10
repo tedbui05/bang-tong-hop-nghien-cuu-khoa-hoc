@@ -98,7 +98,7 @@ export function RowMenu({
 }
 
 // "Đã xoá 2 bài" kèm nút Hoàn tác, tự ẩn sau UNDO_SECONDS giây. Không hỏi lại trước khi xoá vì có hoàn tác.
-export function UndoToast({ message, onUndo, onDone }: { message: string; onUndo: () => void; onDone: () => void }) {
+export function UndoToast({ message, onUndo, onDone }: { message: string; onUndo?: () => void; onDone: () => void }) {
   const [paused, setPaused] = useState(false);
   useEffect(() => {
     if (paused) return;
@@ -116,16 +116,18 @@ export function UndoToast({ message, onUndo, onDone }: { message: string; onUndo
       onBlur={() => setPaused(false)}
     >
       <span>{message}</span>
-      <button
-        type="button"
-        className="undo-toast__button"
-        onClick={() => {
-          onUndo();
-          onDone();
-        }}
-      >
-        Hoàn tác
-      </button>
+      {onUndo ? (
+        <button
+          type="button"
+          className="undo-toast__button"
+          onClick={() => {
+            onUndo();
+            onDone();
+          }}
+        >
+          Hoàn tác
+        </button>
+      ) : null}
       <button type="button" className="undo-toast__close" aria-label="Đóng thông báo" onClick={onDone}>
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />

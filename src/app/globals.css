@@ -3614,3 +3614,25 @@ a.ev-pop__button {
   color: var(--on-accent);
   font-weight: 600;
 }
+
+/* Nút Hoàn tác, Làm lại trên thanh công cụ */
+.undo-redo {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.undo-redo__button {
+  min-width: 36px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.undo-redo__button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.welcome__undo {
+  margin-top: 16px;
+}

@@ -21,16 +21,31 @@ import { useScrollHint } from "./useScrollHint";
 import { ResetDataButton } from "./ResetDataButton";
 import { SaveStatus } from "./SaveStatus";
 import { DeleteTableDialog, RowMenu, SelectionBar, UndoToast } from "./TableActions";
-import { SAMPLE_TABLE_ID, type RemovedPapers } from "@/lib/table-ops";
+import { SAMPLE_TABLE_ID } from "@/lib/table-ops";
+import { historyShortcut, isTypingTarget } from "@/lib/history";
 
 const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", "not_found", "manual"];
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { activeTable, hydrated, demoOpen, openDemo, closeDemo } = useStore();
+  const { activeTable, hydrated, demoOpen, openDemo, closeDemo, history, undo, redo } = useStore();
   const table = state === "trong" ? null : activeTable;
   // Bảng minh hoạ chỉ sống trong trang này: rời trang là đóng.
   useEffect(() => closeDemo, [closeDemo]);
+
+  // Cmd+Z hoàn tác, Cmd+Shift+Z làm lại, chỉ ở trang bảng. Đang gõ trong ô chữ thì để trình duyệt hoàn tác chữ trong ô.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
+      const action = historyShortcut(event, isTypingTarget(document.activeElement));
+      if (!action) return;
+      event.preventDefault();
+      if (action === "undo") undo();
+      else redo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   if (!hydrated && state === "binh-thuong") {
     return (
@@ -90,6 +105,13 @@ export function TableView({ state }: { state: PreviewState }) {
             Bạn đặt ra các cột cần điền, tải bài báo PDF lên. AI đề xuất nội dung từng ô kèm câu trích nguyên văn và số trang;
             app tự kiểm tra câu trích có thật trong bài; bạn duyệt từng ô rồi mới lưu vào bảng, và xuất được ra Excel.
           </p>
+          {history.canUndo ? (
+            <p className="welcome__undo">
+              <button type="button" className="button button--secondary" onClick={undo}>
+                ↶ {history.undoTitle}
+              </button>
+            </p>
+          ) : null}
           <div className="welcome__actions">
             <Link className="button button--primary" href="/tao-bang">
               Tạo bảng đầu tiên
@@ -144,7 +166,10 @@ function Sheet({ table }: { table: SheetTable }) {
     demoOpen,
     closeDemo,
     deletePapers,
-    undoDeletePapers,
+    history,
+    undo: undoAction,
+    redo: redoAction,
+    undoIfLatest,
     deleteTable,
     queue,
   } = useStore();
@@ -174,7 +199,7 @@ function Sheet({ table }: { table: SheetTable }) {
   // Bài đánh dấu bằng ô chọn ở đầu dòng; menu của dòng; thông báo hoàn tác; hộp hỏi xoá bảng.
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const [rowMenu, setRowMenu] = useState<{ paperId: string; x: number; y: number } | null>(null);
-  const [undo, setUndo] = useState<{ message: string; removed: RemovedPapers } | null>(null);
+  const [undo, setUndo] = useState<{ message: string; entryId: number | null; key: number } | null>(null);
   const [askDeleteTable, setAskDeleteTable] = useState(false);
   // Khung xem trước trang PDF khi rê chuột, Tab hoặc bấm vào nhãn bằng chứng trong ô.
   const preview = useEvidencePreview();
@@ -204,7 +229,7 @@ function Sheet({ table }: { table: SheetTable }) {
     if (!removed) return;
     if (selected && ids.includes(selected.paperId)) setSelected(null);
     preview.close();
-    setUndo({ message: `Đã xoá ${removed.items.length} bài`, removed });
+    setUndo({ message: `Đã xoá ${removed.count} bài`, entryId: removed.entryId, key: Date.now() });
   }
 
   // Mở cả file PDF của bài, ở trang 1, có danh sách câu trích để bấm nhảy tới.
@@ -387,6 +412,7 @@ function Sheet({ table }: { table: SheetTable }) {
       ) : null}
 
       <div ref={toolbarRow} className="sheet-toolbar" role="group" aria-label="Công cụ của bảng">
+        <UndoRedoButtons history={history} onUndo={undoAction} onRedo={redoAction} />
         <div className="sheet-toolbar__search">
           <label htmlFor="tim-kiem" className="visually-hidden">
             Tìm trong toàn bảng
@@ -620,7 +646,15 @@ function Sheet({ table }: { table: SheetTable }) {
         />
       ) : null}
 
-      {undo ? <UndoToast key={undo.message + undo.removed.items[0]?.paper.id} message={undo.message} onUndo={() => undoDeletePapers(undo.removed)} onDone={endUndo} /> : null}
+      {undo ? (
+        <UndoToast
+          key={undo.key}
+          message={undo.message}
+          // Bảng minh hoạ không có lịch sử hoàn tác nên thông báo không có nút Hoàn tác.
+          onUndo={undo.entryId === null ? undefined : () => undoIfLatest(undo.entryId!)}
+          onDone={endUndo}
+        />
+      ) : null}
 
       {askDeleteTable ? (
         <DeleteTableDialog
@@ -735,5 +769,41 @@ function AddColumnForm({
         </button>
       ))}
     </form>
+  );
+}
+
+// Nút Hoàn tác, Làm lại trên thanh công cụ. Rê chuột (hoặc trình đọc màn hình) cho biết thao tác sẽ bị hoàn tác.
+function UndoRedoButtons({
+  history,
+  onUndo,
+  onRedo,
+}: {
+  history: { canUndo: boolean; canRedo: boolean; undoTitle: string; redoTitle: string };
+  onUndo: () => void;
+  onRedo: () => void;
+}) {
+  return (
+    <span className="undo-redo" role="group" aria-label="Hoàn tác, làm lại">
+      <button
+        type="button"
+        className="button button--quiet sheet-toolbar__button undo-redo__button"
+        disabled={!history.canUndo}
+        title={`${history.undoTitle} (⌘Z)`}
+        aria-label={history.undoTitle}
+        onClick={onUndo}
+      >
+        <span aria-hidden="true">↶</span>
+      </button>
+      <button
+        type="button"
+        className="button button--quiet sheet-toolbar__button undo-redo__button"
+        disabled={!history.canRedo}
+        title={`${history.redoTitle} (⌘⇧Z)`}
+        aria-label={history.redoTitle}
+        onClick={onRedo}
+      >
+        <span aria-hidden="true">↷</span>
+      </button>
+    </span>
   );
 }
