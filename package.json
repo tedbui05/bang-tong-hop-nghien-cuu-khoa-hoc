@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "predev": "node scripts/copy-pdfjs-assets.mjs",
-    "prebuild": "node scripts/copy-pdfjs-assets.mjs",
+    "prebuild": "node scripts/kiem-tra-bien-build.mjs && node scripts/copy-pdfjs-assets.mjs",
     "test:phan-quyen": "node scripts/kiem-tra-phan-quyen.mjs"
   },
   "dependencies": {

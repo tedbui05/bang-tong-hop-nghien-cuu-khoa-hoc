@@ -7,9 +7,22 @@ import type { QueueError } from "./paper-pipeline";
 
 let client: SupabaseClient | null = null;
 
+// Phải viết đúng dạng process.env.NEXT_PUBLIC_... thì Next.js mới gắn giá trị vào code trình duyệt, và chỉ gắn
+// lúc build: thêm biến trên Vercel xong phải build lại. Thiếu lúc build thì trên trình duyệt luôn trống.
+function publicConfig() {
+  return { url: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() };
+}
+
+// Tên các biến công khai còn thiếu (chỉ tên, không có giá trị), để câu báo lỗi nói đúng chỗ cần sửa.
+export function missingPublicConfig(config = publicConfig()): string[] {
+  const missing: string[] = [];
+  if (!config.url) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!config.key) missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+  return missing;
+}
+
 function browserClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+  const { url, key } = publicConfig();
   if (!url || !key) return null;
   client ??= createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
   return client;
@@ -21,12 +34,14 @@ export type TokenResult = { ok: true; token: string } | { ok: false; error: Queu
 export async function getAccessToken(): Promise<TokenResult> {
   const supabase = browserClient();
   if (!supabase) {
+    const missing = missingPublicConfig();
+    console.error(`[đăng nhập] Bản app này được build khi thiếu ${missing.join(", ")}: thêm biến rồi build lại.`);
     return {
       ok: false,
       // Có nút Thử lại: cài đặt xong (docs/cai-dat-supabase.md) thì gửi lại được, không phải chọn lại file.
       error: {
         title: "Đăng nhập chưa được cài đặt",
-        detail: "App thiếu thông tin để đăng nhập nên chưa gửi được bài cho AI. Hãy báo người quản lý app; cài đặt xong thì bấm Thử lại.",
+        detail: `Bản app này được dựng khi còn thiếu ${missing.join(" và ")}, nên chưa gửi được bài cho AI. Hãy báo người quản lý app: thêm biến này rồi dựng lại app (deploy lại), sau đó bấm Thử lại.`,
         retry: true,
       },
     };
@@ -37,16 +52,50 @@ export async function getAccessToken(): Promise<TokenResult> {
     const { data: signedIn, error } = await supabase.auth.signInAnonymously();
     if (error || !signedIn.session?.access_token) throw error ?? new Error("không có phiên");
     return { ok: true, token: signedIn.session.access_token };
-  } catch {
+  } catch (error) {
+    // Ghi lỗi gốc (tên, mã, nội dung; không có khoá) để lần sau tìm được nguyên nhân thật.
+    console.error("[đăng nhập] Đăng nhập ẩn danh thất bại:", describeAuthError(error));
+    return { ok: false, error: signInError(error, typeof navigator !== "undefined" && navigator.onLine === false) };
+  }
+}
+
+type AuthErrorLike = { name?: unknown; status?: unknown; code?: unknown; message?: unknown };
+
+export function describeAuthError(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error);
+  const { name, status, code, message } = error as AuthErrorLike;
+  return [name, status, code, message].filter((part) => part !== undefined && part !== null && part !== "").map(String).join(" | ");
+}
+
+// Đổi lỗi đăng nhập ẩn danh thành câu tiếng Việt nói đúng nguyên nhân. Chỉ nói "kiểm tra mạng" khi đúng là mạng.
+export function signInError(error: unknown, offline: boolean): QueueError {
+  const { status, code, message } = (error && typeof error === "object" ? error : {}) as AuthErrorLike;
+  const text = `${String(code ?? "")} ${String(message ?? "")}`.toLowerCase();
+  if (offline || /failed to fetch|networkerror|network request failed|load failed/.test(text)) {
+    return { title: "Chưa đăng nhập được", detail: "Không kết nối được tới máy chủ đăng nhập. Hãy kiểm tra kết nối mạng rồi bấm Thử lại.", retry: true };
+  }
+  if (/anonymous_provider_disabled|anonymous sign-ins are disabled/.test(text)) {
     return {
-      ok: false,
-      error: {
-        title: "Chưa đăng nhập được",
-        detail: "App cần một phiên đăng nhập (không cần tạo tài khoản) để gửi bài cho AI. Hãy kiểm tra kết nối mạng rồi bấm Thử lại.",
-        retry: true,
-      },
+      title: "Đăng nhập ẩn danh chưa được bật",
+      detail: "Máy chủ đăng nhập (Supabase) đang tắt đăng nhập ẩn danh. Hãy báo người quản lý app bật lại theo docs/cai-dat-supabase.md, rồi bấm Thử lại.",
+      retry: true,
     };
   }
+  if (/captcha/.test(text)) {
+    return {
+      title: "Máy chủ đăng nhập đòi xác minh",
+      detail: "Supabase đang bật CAPTCHA cho đăng nhập ẩn danh nhưng app chưa hỗ trợ. Hãy báo người quản lý app.",
+      retry: true,
+    };
+  }
+  if (status === 429 || /rate limit|too many/.test(text)) {
+    return { title: "Đăng nhập quá nhiều lần", detail: "Máy chủ đăng nhập đang tạm chặn vì có quá nhiều lần đăng nhập. Hãy chờ vài phút rồi bấm Thử lại.", retry: true };
+  }
+  return {
+    title: "Chưa đăng nhập được",
+    detail: "Máy chủ đăng nhập từ chối hoặc gặp lỗi. Hãy bấm Thử lại sau ít phút; nếu vẫn lỗi, hãy báo người quản lý app.",
+    retry: true,
+  };
 }
 
 // Đã cài Supabase cho trình duyệt chưa (thiếu thì app chạy như cũ, chỉ giữ dữ liệu trên trình duyệt).

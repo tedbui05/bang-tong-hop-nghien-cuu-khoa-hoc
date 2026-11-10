@@ -59,6 +59,14 @@ Tắt `npm run dev` rồi chạy lại để app đọc biến mới.
 
 Thêm đúng các biến trên vào phần Environment Variables của nơi chạy app. Không thêm `AI_DUNG_KET_QUA_MAU`.
 
+Trên Vercel (Project → Settings → Environment Variables):
+
+- Tên biến gõ đúng từng chữ, ví dụ `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Giá trị dán nguyên, **không** có dấu ngoặc kép, không có dấu cách hay xuống dòng ở đầu và cuối.
+- Mỗi biến phải tích môi trường **Production** (và Preview nếu muốn thử các nhánh khác).
+- Hai biến `NEXT_PUBLIC_...` chỉ được gắn vào app **lúc build**. Thêm hoặc sửa biến xong phải deploy lại: vào Deployments, bấm "⋯" ở bản mới nhất, chọn Redeploy và **bỏ tích** "Use existing Build Cache". Chỉ bấm tải lại trang thì không đủ.
+- Nhật ký build (Deployments → bản deploy → Build Logs) có dòng "Đã có đủ biến công khai cho môi trường Vercel: production". Thấy dòng "!!! CẢNH BÁO: ... thiếu ..." thì biến chưa tới được bản build (`scripts/kiem-tra-bien-build.mjs`).
+- Thiếu hai biến này thì app báo "Đăng nhập chưa được cài đặt" và ghi rõ biến nào thiếu.
+
 ## Kiểm tra
 
 Chạy `npm run test:phan-quyen`. Lệnh này tạo hai người dùng ẩn danh tạm, thử đọc, sửa, xoá chéo dữ liệu của nhau, rồi xoá hai người dùng đó. Mọi dòng phải là "ĐẠT".
