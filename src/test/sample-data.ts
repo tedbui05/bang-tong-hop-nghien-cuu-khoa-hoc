@@ -1,5 +1,5 @@
-import { isOwnColumn, suggestedColumns } from "./columns";
-import type { AiCell, Paper, PaperInfo, ReviewCell, SavedPaper, SheetTable } from "./types";
+import { isOwnColumn, suggestedColumns } from "@/lib/columns";
+import type { AiCell, Paper, PaperInfo, ReviewCell, SavedPaper, SheetTable } from "@/lib/types";
 
 // Dữ liệu mẫu lấy từ các bài báo có thật. Mọi câu trích đều chép nguyên văn từ file PDF và đã được
 // dò lại trong bài gốc. Nhãn được gán tay vì code kiểm tra chưa có; ô "cần kiểm tra" dùng trường hợp

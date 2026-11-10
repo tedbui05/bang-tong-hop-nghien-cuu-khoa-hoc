@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyEntry, emptyHistory, historyShortcut, isTypingTarget, pushEntry, redoTitle, takeRedo, takeUndo, undoTitle, type HistoryEntry } from "./history";
-import { sampleTable } from "./sample-data";
+import { sampleTable } from "@/test/sample-data";
 import type { SheetTable } from "./types";
 
 const table = (id: string, name = id): SheetTable => ({ id, name, columns: sampleTable.columns, papers: [] });

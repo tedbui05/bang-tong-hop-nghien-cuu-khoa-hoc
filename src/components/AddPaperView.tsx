@@ -4,13 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { waitingMessage } from "@/lib/ai-extract";
-import { SAMPLE_PAPER_NAME, SAMPLE_PAPER_URL, isAppSamplePaper } from "@/lib/app-sample";
 import { hasContentColumn, isOwnColumn } from "@/lib/columns";
 import { MAX_PDF_BYTES, formatMegabytes } from "@/lib/pdf-read";
 import type { PreviewState } from "@/lib/preview-state";
 import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type QueueItem } from "@/lib/store";
-import { SAMPLE_TABLE_ID } from "@/lib/table-ops";
 import { getLabelKey, type LabelKey } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 import { StatusIcon } from "./StatusBadge";
@@ -46,19 +44,15 @@ async function filesFromDrop(items: DataTransferItemList): Promise<File[]> {
 }
 
 function AddPaperContent({ state }: { state: PreviewState }) {
-  // Bài mới chỉ vào bảng riêng của người dùng, không bao giờ vào Bảng mẫu hay bảng minh hoạ.
-  const { targetTable, tables, setActiveTable, hydrated, queue, addFiles } = useStore();
+  // Bài mới vào bảng đang mở.
+  const { targetTable, hydrated, queue, addFiles } = useStore();
   const table = state === "trong" ? null : targetTable;
-  const ownTables = tables.filter((item) => item.id !== SAMPLE_TABLE_ID);
   const [dragging, setDragging] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
-  const [sampleState, setSampleState] = useState<"idle" | "loading" | "missing" | "offline">("idle");
   const folderInput = useRef<HTMLInputElement | null>(null);
   const canAdd = Boolean(table && hydrated && hasContentColumn(table.columns));
 
-  const items = queue.filter((item) => !item.sample);
-  // Bài mẫu đang chờ xử lý hoặc chờ duyệt ở bảng này: không cho thêm bản nữa, mỗi bản tốn 1 lượt AI.
-  const sampleQueued = items.some((item) => isAppSamplePaper(item.fileName) && item.tableId === table?.id && item.status !== "saved");
+  const items = queue;
   const working = items.some((item) => ["waiting", "reading", "ai", "checking"].includes(item.status));
 
   // Tải lại trang khi còn bài chưa xử lý xong thì mất file: nhắc trước.
@@ -74,21 +68,6 @@ function AddPaperContent({ state }: { state: PreviewState }) {
     // Bỏ file ẩn của hệ điều hành (.DS_Store) khỏi danh sách báo bỏ qua.
     const visible = files.filter((file) => !file.name.startsWith("."));
     setSkipped(addFiles(visible));
-  }
-
-  async function addSamplePaper() {
-    setSampleState("loading");
-    try {
-      const response = await fetch(SAMPLE_PAPER_URL);
-      if (!response.ok) {
-        setSampleState("missing");
-        return;
-      }
-      take([new File([await response.blob()], SAMPLE_PAPER_NAME, { type: "application/pdf" })]);
-      setSampleState("idle");
-    } catch {
-      setSampleState("offline");
-    }
   }
 
   async function handleDrop(event: DragEvent) {
@@ -125,31 +104,6 @@ function AddPaperContent({ state }: { state: PreviewState }) {
           }
         >
           <p>File có thể bị hỏng hoặc là bản scan. Hãy thử file PDF bôi đen được chữ.</p>
-        </StateMessage>
-      ) : !table && ownTables.length > 0 ? (
-        <StateMessage
-          tone="empty"
-          title="Hãy chọn bảng để thêm bài"
-          action={
-            <Link className="button button--secondary" href="/tao-bang">
-              Tạo bảng mới
-            </Link>
-          }
-        >
-          <p>Bảng đang mở là bảng minh hoạ, không nhận bài mới. Hãy chọn một bảng của bạn:</p>
-          <label className="table-pick">
-            <span className="visually-hidden">Bảng sẽ nhận bài</span>
-            <select defaultValue="" onChange={(event) => event.target.value && setActiveTable(event.target.value)}>
-              <option value="" disabled>
-                Chọn bảng…
-              </option>
-              {ownTables.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </StateMessage>
       ) : !table ? (
         <StateMessage
@@ -210,33 +164,6 @@ function AddPaperContent({ state }: { state: PreviewState }) {
                 event.target.value = "";
               }}
             />
-          </div>
-
-          <div className="sample-paper">
-            <p className="sample-paper__text">
-              Chưa có bài báo trong máy? Thử với bài mẫu do app tạo. Đây không phải bài báo thật: tên người, tạp chí và số
-              liệu đều là hư cấu. AI đọc bài mẫu cũng tính 1 lượt trong ngày.
-            </p>
-            <div className="sample-paper__actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={!canAdd || sampleState === "loading" || sampleQueued}
-                onClick={() => void addSamplePaper()}
-              >
-                {sampleState === "loading" ? "Đang lấy bài mẫu…" : sampleQueued ? "Bài mẫu đã ở hàng chờ" : "Tải bài mẫu để thử"}
-              </button>
-              <a className="link-button" href={SAMPLE_PAPER_URL} download={SAMPLE_PAPER_NAME}>
-                Tải file về máy để xem
-              </a>
-            </div>
-            {sampleState === "offline" || sampleState === "missing" ? (
-              <p className="field-error" role="alert">
-                {sampleState === "offline"
-                  ? "Chưa lấy được bài mẫu. Hãy kiểm tra mạng rồi bấm lại."
-                  : "Máy chủ chưa có file bài mẫu. Hãy báo người quản lý app."}
-              </p>
-            ) : null}
           </div>
 
           {!hasContentColumn(table.columns) ? (

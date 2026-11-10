@@ -6,7 +6,7 @@ Web app giúp sinh viên làm khoá luận lập bảng tổng quan tài liệu.
 
 ### Cần có
 
-- **Node.js 22.18 trở lên**, hoặc 23.6 trở lên (bỏ qua 23.0 đến 23.5). Script dựng bài mẫu đọc thẳng file `.ts`, và chỉ các bản Node này làm được việc đó mà không cần cài thêm. Yêu cầu này cũng ghi ở mục `engines` của `package.json`. Xem phiên bản đang dùng bằng `node --version`.
+- **Node.js 22.18 trở lên**, hoặc 23.6 trở lên (bỏ qua 23.0 đến 23.5). Yêu cầu này ghi ở mục `engines` của `package.json`. Xem phiên bản đang dùng bằng `node --version`.
 - Khoá Gemini (gói miễn phí dùng được) và một dự án Supabase. Hướng dẫn cài Supabase ở `docs/cai-dat-supabase.md`.
 
 ### Các bước
@@ -25,11 +25,10 @@ Muốn thử giao diện mà không gọi Gemini: đặt `AI_DUNG_KET_QUA_MAU=1`
 | `npm run lint` | Kiểm tra code |
 | `npm run build` | Dựng bản chạy thật |
 | `npm run test:phan-quyen` | Thử quy tắc phân quyền trên Supabase thật |
-| `node scripts/tao-bai-mau.mjs` | Dựng lại bài mẫu sau khi sửa nội dung ở `src/test/bai-mau.ts` |
 
-## Bài mẫu để thử
+## Bắt đầu
 
-Trang Thêm bài có nút **"Tải bài mẫu để thử"**. Bài mẫu là bài do app tạo (`public/bai-mau/bai-mau-do-app-tao.pdf`), không phải bài báo thật: tên người, tạp chí và số liệu đều là hư cấu. AI đọc bài mẫu vẫn tính 1 lượt trong ngày. Thao tác trên bài mẫu không được tính vào số liệu đo hiệu quả.
+Người dùng mới bắt đầu từ bảng trống: tạo bảng (đặt tên, chọn cột), rồi tải bài báo PDF của mình lên. App không có bài mẫu hay bảng minh hoạ có sẵn; mỗi bài gửi cho AI tính 1 lượt trong ngày.
 
 Kịch bản demo nằm ở `docs/kich-ban-demo.md`.
 

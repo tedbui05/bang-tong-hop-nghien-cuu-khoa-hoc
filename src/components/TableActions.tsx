@@ -152,17 +152,15 @@ export function SelectionBar({ count, onClear, onDelete }: { count: number; onCl
   );
 }
 
-// Hỏi lại trước khi xoá cả bảng (không hoàn tác được). sample: bỏ Bảng mẫu có sẵn trong app.
+// Hỏi lại trước khi xoá cả bảng (không hoàn tác được).
 export function DeleteTableDialog({
   table,
   waiting,
-  sample,
   onConfirm,
   onClose,
 }: {
   table: SheetTable;
   waiting: number;
-  sample: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -174,25 +172,21 @@ export function DeleteTableDialog({
 
   return (
     <dialog ref={dialog} className="confirm-dialog" aria-labelledby="xoa-bang-tieu-de" aria-describedby="xoa-bang-mo-ta" onClose={onClose}>
-      <h2 id="xoa-bang-tieu-de">{sample ? "Bỏ bảng minh hoạ?" : `Xoá bảng “${table.name}”?`}</h2>
+      <h2 id="xoa-bang-tieu-de">Xoá bảng “{table.name}”?</h2>
       <div id="xoa-bang-mo-ta">
-        {sample ? (
-          <p>Bảng minh hoạ có sẵn trong app sẽ bị bỏ khỏi danh sách bảng của bạn, cả trên trình duyệt này lẫn trên máy chủ.</p>
-        ) : (
-          <p>App sẽ xoá vĩnh viễn, cả trên trình duyệt này lẫn trên máy chủ:</p>
-        )}
+        <p>App sẽ xoá vĩnh viễn, cả trên trình duyệt này lẫn trên máy chủ:</p>
         <ul className="confirm-dialog__list">
           <li>
             {table.papers.length} bài trong bảng{table.papers.length ? ", kể cả định dạng, ghi chú và nhãn" : ""}
           </li>
           {waiting > 0 ? <li>{waiting} bài đang chờ xử lý hoặc chờ duyệt của bảng này</li> : null}
-          {sample ? null : <li>Các file PDF của những bài này đã giữ trong trình duyệt</li>}
+          <li>Các file PDF của những bài này đã giữ trong trình duyệt</li>
         </ul>
-        <p>{sample ? "Bảng riêng của bạn giữ nguyên." : "Không khôi phục lại được. Nếu cần giữ, hãy xuất Excel trước."}</p>
+        <p>Không khôi phục lại được. Nếu cần giữ, hãy xuất Excel trước.</p>
       </div>
       <div className="confirm-dialog__actions">
         <button type="button" className="button button--primary" autoFocus onClick={onClose}>
-          {sample ? "Giữ lại" : "Giữ bảng"}
+          Giữ bảng
         </button>
         <button
           type="button"
@@ -202,7 +196,7 @@ export function DeleteTableDialog({
             onClose();
           }}
         >
-          {sample ? "Bỏ bảng minh hoạ" : "Xoá bảng"}
+          Xoá bảng
         </button>
       </div>
     </dialog>

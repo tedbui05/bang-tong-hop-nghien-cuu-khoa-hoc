@@ -591,7 +591,7 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
     body = (
       <>
         <p className="ev-pop__note">
-          File PDF gốc và chữ của bài không còn trong trình duyệt này{target.paper.filled_by ? "" : " (bài minh hoạ có sẵn trong app)"}. Câu trích:
+          File PDF gốc và chữ của bài không còn trong trình duyệt này. Câu trích:
         </p>
         <blockquote className="ev-pop__quote source-text" lang={target.paper.language_code} translate="no">
           {target.cell.quote_original}

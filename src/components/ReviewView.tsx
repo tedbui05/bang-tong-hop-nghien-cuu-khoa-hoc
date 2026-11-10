@@ -17,8 +17,7 @@ import { ReviewCard } from "./ReviewCard";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 
 export function ReviewView({ state }: { state: PreviewState }) {
-  const router = useRouter();
-  const { review, startSampleReview, targetTable, queue, queueLoaded, openReview } = useStore();
+  const { review, queue, queueLoaded, openReview } = useStore();
   const firstReady = queue.find((item) => item.status === "ready")?.id ?? null;
   const processing = queue.some((item) => ["waiting", "reading", "ai", "checking"].includes(item.status));
 
@@ -87,22 +86,9 @@ export function ReviewView({ state }: { state: PreviewState }) {
           tone="empty"
           title="Chưa có bài nào chờ duyệt"
           action={
-            <>
-              <Link className="button button--primary" href="/them-bai">
-                Thêm bài báo
-              </Link>
-              <button
-                type="button"
-                className="button button--quiet"
-                disabled={!targetTable}
-                onClick={() => {
-                  startSampleReview();
-                  router.push("/duyet-bai");
-                }}
-              >
-                Xem bài mẫu
-              </button>
-            </>
+            <Link className="button button--primary" href="/them-bai">
+              Thêm bài báo
+            </Link>
           }
         >
           <p>Tải một bài báo lên, các ô AI đề xuất sẽ hiện ở đây để bạn duyệt.</p>
@@ -161,7 +147,6 @@ function ReviewSession() {
   const unfilledColumns = columns.filter(
     (column) => column.kind === "content" && !session.cells.some((cell) => cell.column === column.id),
   );
-  const isSample = session.fileName === null;
   const othersWaiting = queue.filter((item) => item.status === "ready" && item.id !== session.id && item.tableId === session.tableId).length;
 
   // Thẻ thông tin bài cũng là một mục phải duyệt.
@@ -206,11 +191,7 @@ function ReviewSession() {
       <LeaveGuard
         active
         title="Bài này chưa được lưu vào bảng"
-        detail={
-          isSample
-            ? "Bài mẫu không được giữ lại. Nếu rời trang, phần bạn đã duyệt sẽ mất."
-            : "Phần bạn đã duyệt vẫn được giữ trên trình duyệt này, bạn có thể quay lại duyệt tiếp ở trang Thêm bài. Bài chỉ hiện trong bảng sau khi bấm “Lưu vào bảng”."
-        }
+        detail="Phần bạn đã duyệt vẫn được giữ trên trình duyệt này, bạn có thể quay lại duyệt tiếp ở trang Thêm bài. Bài chỉ hiện trong bảng sau khi bấm “Lưu vào bảng”."
       />
       <div className="review-bar">
         <div className="review-bar__inner review-bar__inner--wide">
@@ -246,7 +227,6 @@ function ReviewSession() {
               {filledByText(session.paper.filled_by)}
             </p>
           ) : null}
-          {isSample ? <p className="small-note">Đây là bài minh hoạ có sẵn trong app, chưa qua AI. Nhãn kiểm tra được gán tay.</p> : null}
           {othersWaiting > 0 ? <p className="small-note">Sau bài này còn {othersWaiting} bài chờ duyệt.</p> : null}
         </div>
 
@@ -339,9 +319,7 @@ function ReviewSession() {
         {unfilledColumns.length > 0 ? (
           <p className="small-note review-unfilled">
             Chưa điền: {unfilledColumns.map((column) => column.name).join(", ")}.{" "}
-            {isSample
-              ? "Bài mẫu chỉ có nội dung cho những cột trùng với bài mẫu."
-              : "Các cột này được thêm sau khi AI đã đọc bài."}{" "}
+            Các cột này được thêm sau khi AI đã đọc bài.{" "}
             Sau khi lưu, các ô này ghi “chưa điền” và bạn có thể tự gõ trong bảng.
           </p>
         ) : null}

@@ -77,7 +77,7 @@ export function EvidenceSide({ cell, columnName, pages, lang, open, onClose, onO
         <p className="review-side__empty">Bài không có thông tin cho cột này nên không có đoạn gốc để xem.</p>
       ) : !pages ? (
         <p className="review-side__empty">
-          Chưa có chữ của bài này trong trình duyệt (bài mẫu hoặc dữ liệu đã bị xoá). Câu trích vẫn hiện ở thẻ bên trái.
+          Chưa có chữ của bài này trong trình duyệt (dữ liệu trình duyệt đã bị xoá). Câu trích vẫn hiện ở thẻ bên trái.
         </p>
       ) : (
         <PageTextView pages={pages} page={view.page} ranges={view.ranges} lang={lang} visible={open || !isSmall()} />

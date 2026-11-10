@@ -22,18 +22,15 @@ import { ResetDataButton } from "./ResetDataButton";
 import { SaveStatus } from "./SaveStatus";
 import { VersionHistory } from "./VersionHistory";
 import { DeleteTableDialog, RowMenu, SelectionBar, UndoToast } from "./TableActions";
-import { SAMPLE_TABLE_ID } from "@/lib/table-ops";
 import { historyShortcut, isTypingTarget } from "@/lib/history";
 
 const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", "not_found", "manual"];
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { activeTable, hydrated, demoOpen, openDemo, closeDemo, history, undo, redo, versionsEnabled } = useStore();
+  const { activeTable, hydrated, history, undo, redo, versionsEnabled } = useStore();
   const [showDeleted, setShowDeleted] = useState(false);
   const table = state === "trong" ? null : activeTable;
-  // Bảng minh hoạ chỉ sống trong trang này: rời trang là đóng.
-  useEffect(() => closeDemo, [closeDemo]);
 
   // Cmd+Z hoàn tác, Cmd+Shift+Z làm lại, chỉ ở trang bảng. Đang gõ trong ô chữ thì để trình duyệt hoàn tác chữ trong ô.
   useEffect(() => {
@@ -64,7 +61,7 @@ export function TableView({ state }: { state: PreviewState }) {
     return (
       <main id="noi-dung" className="sheet-page">
         {/* Mỗi bảng có bộ lọc và vùng chọn riêng nên đổi bảng là dựng lại từ đầu. */}
-        <Sheet key={demoOpen ? `minh-hoa-${table.id}` : table.id} table={table} />
+        <Sheet key={table.id} table={table} />
       </main>
     );
   }
@@ -118,9 +115,6 @@ export function TableView({ state }: { state: PreviewState }) {
             <Link className="button button--primary" href="/tao-bang">
               Tạo bảng đầu tiên
             </Link>
-            <button type="button" className="link-button" onClick={openDemo}>
-              Xem bảng minh hoạ
-            </button>
             {versionsEnabled ? (
               <button type="button" className="link-button" onClick={() => setShowDeleted(true)}>
                 Khôi phục bảng đã xoá
@@ -171,8 +165,6 @@ function Sheet({ table }: { table: SheetTable }) {
     deleteColumn,
     moveColumn,
     reorderColumns,
-    demoOpen,
-    closeDemo,
     deletePapers,
     history,
     undo: undoAction,
@@ -181,7 +173,6 @@ function Sheet({ table }: { table: SheetTable }) {
     deleteTable,
     queue,
   } = useStore();
-  const isSampleTable = !demoOpen && table.id === SAMPLE_TABLE_ID;
   const { papers, columns } = table;
   // Điện thoại: hai hàng này cuộn ngang, có vệt mờ ở mép phải khi còn nội dung.
   const statsRow = useRef<HTMLDivElement | null>(null);
@@ -330,10 +321,10 @@ function Sheet({ table }: { table: SheetTable }) {
         <div className="sheet-titlebar__text">
           <h1>{table.name}</h1>
           <p>{table.description || `${papers.length} bài, ${columns.length} cột`}</p>
-          {demoOpen ? null : <SaveStatus />}
+          <SaveStatus />
         </div>
         <div className="sheet-titlebar__actions">
-          {!demoOpen && tables.length > 1 ? (
+          {tables.length > 1 ? (
             <label className="sheet-titlebar__switch">
               <span>Đổi bảng</span>
               <select value={table.id} onChange={(event) => setActiveTable(event.target.value)}>
@@ -345,19 +336,17 @@ function Sheet({ table }: { table: SheetTable }) {
               </select>
             </label>
           ) : null}
-          {demoOpen ? null : (
-            <details ref={tableOptions} className="table-options">
-              <summary className="button sheet-titlebar__ghost">Tuỳ chọn bảng</summary>
-              <div className="table-options__panel">
-                <button type="button" className="row-menu__item" onClick={pickOption(() => setShowVersions(true))}>
-                  Lịch sử phiên bản…
-                </button>
-                <button type="button" className="row-menu__item" onClick={pickOption(() => setAskDeleteTable(true))}>
-                  {isSampleTable ? "Bỏ bảng minh hoạ…" : "Xoá bảng này…"}
-                </button>
-              </div>
-            </details>
-          )}
+          <details ref={tableOptions} className="table-options">
+            <summary className="button sheet-titlebar__ghost">Tuỳ chọn bảng</summary>
+            <div className="table-options__panel">
+              <button type="button" className="row-menu__item" onClick={pickOption(() => setShowVersions(true))}>
+                Lịch sử phiên bản…
+              </button>
+              <button type="button" className="row-menu__item" onClick={pickOption(() => setAskDeleteTable(true))}>
+                Xoá bảng này…
+              </button>
+            </div>
+          </details>
           <Link className="button sheet-titlebar__ghost" href="/tao-bang">
             Tạo bảng mới
           </Link>
@@ -366,24 +355,6 @@ function Sheet({ table }: { table: SheetTable }) {
           </Link>
         </div>
       </header>
-
-      {demoOpen ? (
-        <div className="sample-banner" role="note">
-          <p>
-            <strong>Bảng minh hoạ:</strong> dữ liệu mẫu, nhãn gán tay. Bạn có thể thử sửa, tô màu, xem PDF, nhưng thay đổi không được lưu.
-          </p>
-          <button type="button" className="button button--secondary" onClick={closeDemo}>
-            Đóng bảng minh hoạ
-          </button>
-        </div>
-      ) : isSampleTable ? (
-        <div className="sample-banner" role="note">
-          <p>Đây là bảng minh hoạ có sẵn trong app: dữ liệu mẫu, nhãn gán tay, chưa phải kết quả kiểm tra thật.</p>
-          <button type="button" className="button button--secondary" onClick={() => setAskDeleteTable(true)}>
-            Bỏ bảng minh hoạ
-          </button>
-        </div>
-      ) : null}
 
       <div ref={statsRow} className="sheet-stats" role="group" aria-label="Tổng quan, bấm để lọc">
         <button type="button" className="sheet-stat" aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
@@ -668,7 +639,6 @@ function Sheet({ table }: { table: SheetTable }) {
         <UndoToast
           key={undo.key}
           message={undo.message}
-          // Bảng minh hoạ không có lịch sử hoàn tác nên thông báo không có nút Hoàn tác.
           onUndo={undo.entryId === null ? undefined : () => undoIfLatest(undo.entryId!)}
           onDone={endUndo}
         />
@@ -680,7 +650,6 @@ function Sheet({ table }: { table: SheetTable }) {
         <DeleteTableDialog
           table={table}
           waiting={waitingInTable}
-          sample={isSampleTable}
           onConfirm={() => deleteTable(table.id)}
           onClose={() => setAskDeleteTable(false)}
         />

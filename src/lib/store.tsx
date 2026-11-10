@@ -5,11 +5,9 @@ import { addHighlightRange, withFormat, withRowFill } from "./cell-format";
 import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_ID } from "./columns";
 import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, type Snapshot } from "./cloud-sync";
 import { logEvent, scheduleFlush, setEventSender } from "./events";
-import { isAppSamplePaper } from "./app-sample";
 import { isSaveShortcut } from "./save-status";
 import { applyEntry, emptyHistory, pushEntry, redoTitle, takeRedo, takeUndo, undoTitle, type History, type HistoryEntry } from "./history";
-import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
-import { isSamplePaper, nextActiveAfterDelete, removePapers, SAMPLE_TABLE_ID, startingTables } from "./table-ops";
+import { LEGACY_APP_SAMPLE_FILE, nextActiveAfterDelete, removePapers, startingTables } from "./table-ops";
 import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
 import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
@@ -87,8 +85,6 @@ export type QueueItem = {
   aiStartedAt?: number;
   error?: QueueError;
   session?: ReviewSession;
-  // Bài mẫu của bản xem thử: không giữ trong IndexedDB.
-  sample?: boolean;
   // File PDF và chữ của trang đã giữ trong trình duyệt: bài lỗi (ví dụ hết lượt AI) vẫn nằm trong hàng chờ
   // sau khi tải lại trang và bấm Thử lại được mà không cần chọn lại file.
   stored?: FileMeta | null;
@@ -100,15 +96,11 @@ type ColumnChange = Partial<Pick<TableColumn, "name" | "description" | "visible"
 
 type Store = {
   tables: SheetTable[];
-  // Bảng đang hiện: bảng minh hoạ nếu đang mở, không thì bảng riêng đang chọn.
+  // Bảng đang mở.
   activeTable: SheetTable | null;
-  // Bảng nhận bài mới: bảng riêng đang chọn, không bao giờ là Bảng mẫu hay bảng minh hoạ.
+  // Bảng nhận bài mới (chính là bảng đang mở; tách tên để trang Thêm bài đọc rõ nghĩa).
   targetTable: SheetTable | null;
   setActiveTable: (id: string) => void;
-  // Bảng minh hoạ: chỉ mở khi người dùng bấm "Xem bảng minh hoạ". Thử được nhưng không lưu, không ghi thao tác.
-  demoOpen: boolean;
-  openDemo: () => void;
-  closeDemo: () => void;
   // Xoá bài khỏi bảng đang hiện. Trả về số bài đã xoá và mã thao tác (để nút Hoàn tác trên thông báo).
   deletePapers: (paperIds: string[]) => { count: number; entryId: number | null } | null;
   // Hoàn tác, làm lại (Cmd+Z, Cmd+Shift+Z): theo bảng đang mở, giữ trong phiên làm việc.
@@ -143,8 +135,6 @@ type Store = {
   retryItem: (id: string) => void;
   removeItem: (id: string) => void;
   openReview: (id: string) => void;
-  // Mở bài mẫu của bản xem thử (không gọi AI).
-  startSampleReview: () => void;
   updateCell: (index: number, change: Partial<Pick<ReviewCell, "value_vi" | "review">>) => void;
   // "Duyệt nhanh cả dòng": xác nhận mọi ô chưa duyệt. Chỉ gọi khi canQuickApprove đúng.
   quickApprove: () => void;
@@ -244,7 +234,6 @@ function sortCells(cells: ReviewCell[], columns: TableColumn[]): ReviewCell[] {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [tables, setTables] = useState<SheetTable[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [demo, setDemo] = useState<SheetTable | null>(null);
   // Lịch sử hoàn tác theo từng bảng (khoá là mã bảng; NO_TABLE khi không còn bảng nào). Chỉ trong phiên này.
   const histories = useRef(new Map<string, History>());
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -297,7 +286,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const saved = readSaved();
     // Phải đọc sau khi hiện trang để khớp với máy chủ.
     if (saved) {
-      // Chỉ có Bảng mẫu y nguyên (bản cũ tự lưu cho mọi người): coi như người dùng mới.
+      // Bỏ các bài mẫu của bản cũ (Bảng mẫu, bài minh hoạ, bài mẫu do app tạo).
       const start = startingTables(saved.tables);
       setTables(start);
       setActiveId(start.some((table) => table.id === saved.activeId) ? saved.activeId : (start[0]?.id ?? null));
@@ -352,8 +341,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const remote = await supabaseRemote.load();
       const serverTables = fromRows(remote.tables, remote.papers);
-      // Bản máy chủ chỉ có Bảng mẫu y nguyên: coi như trống. Ảnh chụp vẫn là bản máy chủ thật,
-      // nên lần đồng bộ sau sẽ xoá dòng Bảng mẫu đó trên máy chủ.
+      // Bỏ các bài mẫu của bản cũ khỏi bản máy chủ. Ảnh chụp vẫn là bản máy chủ thật,
+      // nên lần đồng bộ sau sẽ xoá các dòng đó trên máy chủ.
       const remoteTables = startingTables(serverTables);
       const localHasData = JSON.stringify(tablesRef.current) !== PRISTINE;
       const choice = chooseStart(remoteTables.length > 0, localHasData, readDirty());
@@ -398,7 +387,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const json = JSON.stringify(tables);
         // Đổi gì đó trước khi đọc xong máy chủ: đánh dấu để bản trình duyệt được gửi lên.
         if (json !== loadedJson.current) writeDirty(true);
-        // Có dữ liệu riêng (sửa bảng mẫu, tạo bảng, lưu bài, hoặc dữ liệu cũ trên trình duyệt): đăng nhập ẩn danh và lưu lên máy chủ.
+        // Có dữ liệu riêng (tạo bảng, lưu bài, hoặc dữ liệu cũ trên trình duyệt): đăng nhập ẩn danh và lưu lên máy chủ.
         if (json !== PRISTINE) void start();
       }
     }, 200);
@@ -476,17 +465,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // Trình duyệt chặn bộ nhớ thì tải lại cũng về dữ liệu mẫu.
+      // Trình duyệt chặn bộ nhớ thì tải lại cũng về bảng trống.
     }
     // Xoá cả file PDF và bài chờ duyệt đã giữ trong trình duyệt.
     void clearPaperFiles().finally(() => window.location.reload());
   }, []);
 
   const ownTable = useMemo(() => tables.find((table) => table.id === activeId) ?? null, [tables, activeId]);
-  const activeTable = demo ?? ownTable;
-  const targetTable = ownTable && ownTable.id !== SAMPLE_TABLE_ID ? ownTable : null;
-  // Bài chờ duyệt thuộc bảng nào thì đổi theo cột của bảng đó. Đang xem bảng minh hoạ thì không đụng bài nào.
-  const sessionTableId = demo ? null : activeId;
+  const activeTable = ownTable;
+  const targetTable = ownTable;
+  // Bài chờ duyệt thuộc bảng nào thì đổi theo cột của bảng đó.
+  const sessionTableId = activeId;
 
   const record = useCallback((key: string, entry: Omit<HistoryEntry, "id">) => {
     const id = ++entrySeq.current;
@@ -496,23 +485,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Tự lưu một phiên bản trước thao tác lớn (xoá cột, xoá nhiều bài, xoá bảng). Chạy ngầm; lỗi thì bỏ qua,
-  // vì thao tác đó vẫn hoàn tác được trong phiên. Không có máy chủ hoặc đang xem bảng minh hoạ thì không lưu.
-  const autoVersion = useCallback(
-    (table: SheetTable | undefined, reason: string) => {
-      if (!table || demo || !cloudConfigured()) return;
-      void versionsRemote.save(versionInsert(table, { reason })).catch(() => undefined);
-    },
-    [demo],
-  );
+  // vì thao tác đó vẫn hoàn tác được trong phiên. Không có máy chủ thì không lưu.
+  const autoVersion = useCallback((table: SheetTable | undefined, reason: string) => {
+    if (!table || !cloudConfigured()) return;
+    void versionsRemote.save(versionInsert(table, { reason })).catch(() => undefined);
+  }, []);
 
-  // Đang xem bảng minh hoạ: sửa trong bộ nhớ, không vào danh sách bảng nên không lưu, không đồng bộ, không có lịch sử.
   // label: tên thao tác để hoàn tác ("xoá cột Hạn chế"); không có thì thao tác không vào lịch sử (ví dụ đổi độ rộng cột).
   const updateActive = useCallback(
     (change: (table: SheetTable) => SheetTable, label?: string): number | null => {
-      if (demo) {
-        setDemo((current) => (current ? change(current) : current));
-        return null;
-      }
       const index = tablesRef.current.findIndex((table) => table.id === activeId);
       if (index === -1 || !activeId) return null;
       const before = tablesRef.current[index];
@@ -521,7 +502,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setTablesNow((current) => current.map((table) => (table.id === activeId ? after : table)));
       return label ? record(activeId, { label, tableId: activeId, before, after, index }) : null;
     },
-    [activeId, demo, record, setTablesNow],
+    [activeId, record, setTablesNow],
   );
 
   // Đổi mọi bài chờ duyệt (ví dụ khi xoá hoặc đổi thứ tự cột).
@@ -531,21 +512,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setActiveTable = useCallback((id: string) => {
     setSavedTitle(null);
-    setDemo(null);
     setActiveId(id);
   }, []);
-
-  const openDemo = useCallback(() => {
-    setSavedTitle(null);
-    setDemo(structuredClone(sampleTable));
-  }, []);
-  const closeDemo = useCallback(() => setDemo(null), []);
 
   const createTable = useCallback<Store["createTable"]>((name, description, columns) => {
     const id = `bang-${crypto.randomUUID()}`;
     setTablesNow((current) => [...current, { id, name, description, columns, papers: [] }]);
     setSavedTitle(null);
-    setDemo(null);
     setActiveId(id);
   }, [setTablesNow]);
 
@@ -572,12 +545,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const table = tablesRef.current[index];
     if (!table) return;
     const next = nextActiveAfterDelete(tablesRef.current, tableId);
-    autoVersion(table, tableId === SAMPLE_TABLE_ID ? "Trước khi bỏ bảng minh hoạ" : "Trước khi xoá bảng");
+    autoVersion(table, "Trước khi xoá bảng");
     setTablesNow((current) => current.filter((item) => item.id !== tableId));
     setActiveId((current) => (current === tableId ? next : current));
     setSavedTitle(null);
     record(next ?? NO_TABLE, {
-      label: tableId === SAMPLE_TABLE_ID ? "bỏ bảng minh hoạ" : `xoá bảng “${table.name}”`,
+      label: `xoá bảng “${table.name}”`,
       tableId,
       before: table,
       after: null,
@@ -685,9 +658,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const fromAi = column.infoKey
         ? Boolean(paper?.suggested_info[column.infoKey])
         : column.kind === "content" && (cell?.status === "proposed" || cell?.status === "not_found");
-      // Bảng minh hoạ, bài có sẵn của Bảng mẫu và bài mẫu do app tạo không tính vào số liệu.
-      const counted = !demo && !isSamplePaper(paperId) && !isAppSamplePaper(paper?.file?.name);
-      if (fromAi && counted) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
+      if (fromAi) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
       updateActive(
         (table) => ({
           ...table,
@@ -696,7 +667,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         column.kind === "note" ? "sửa ghi chú" : `sửa ô ${column.name}`,
       );
     },
-    [activeTable, updateActive, demo],
+    [activeTable, updateActive],
   );
 
   const updatePapers = useCallback(
@@ -816,7 +787,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const saved = ((await loadAllPending()) ?? []) as QueueItem[];
+      const all = ((await loadAllPending()) ?? []) as QueueItem[];
+      // Bài mẫu do app tạo (nút "Tải bài mẫu để thử" của bản cũ) không còn trong app: bỏ khỏi hàng chờ.
+      const legacy = all.filter((item) => item?.fileName === LEGACY_APP_SAMPLE_FILE);
+      legacy.forEach((item) => {
+        void deletePending(item.id);
+        void deletePaperFiles(item.id);
+      });
+      const saved = all.filter((item) => !legacy.includes(item));
       const items = await Promise.all(
         saved
           .filter((item) => item?.id && ((item.session && item.status === "ready") || (item.status === "error" && item.stored)))
@@ -836,7 +814,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!queueLoaded) return;
     const timer = setTimeout(() => {
       for (const item of queue) {
-        if (item.status === "ready" && item.session && !item.sample) {
+        if (item.status === "ready" && item.session) {
           void savePending(item.id, { ...item, session: { ...item.session, pages: null } });
         } else if (item.status === "error" && item.stored) {
           // Bài lỗi mà file đã được giữ: giữ lại trong hàng chờ để bấm Thử lại sau (ví dụ hết lượt AI hôm nay).
@@ -927,8 +905,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Cột có thể đã bị xoá trong lúc chờ AI: chỉ giữ các cột bảng đang có.
         const latestTable = tablesRef.current.find((item) => item.id === next.tableId);
         const session = latestTable ? pruneToColumns(outcome.session, latestTable.columns) : outcome.session;
-        // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra. Bài mẫu do app tạo không tính.
-        const log: typeof logEvent = isAppSamplePaper(next.fileName) ? () => undefined : logEvent;
+        // Ghi thao tác: lúc tải bài (kèm model đã điền) và từng ô cần kiểm tra.
+        const log = logEvent;
         log("tai_bai", {
           bai: session.id,
           so_o: session.cells.length,
@@ -973,39 +951,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setOpenId(id);
   }, []);
 
-  // Bài mẫu của bản xem thử: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
-  const startSampleReview = useCallback(() => {
-    // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
-    if (!targetTable || !hydrated) return;
-    const { columns } = targetTable;
-    const contentIds = columns.filter((column) => column.kind === "content").map((column) => column.id);
-    const cells = sortCells(
-      toReviewCells(reviewCells).filter((cell) => contentIds.includes(cell.column)),
-      columns,
-    );
-    const keepInfo = (info: PaperInfo): PaperInfo => {
-      const next: PaperInfo = { title: info.title };
-      columns.forEach((column) => {
-        if (column.infoKey && column.infoKey !== "title") next[column.infoKey] = info[column.infoKey];
-      });
-      return next;
-    };
-    // Mỗi lần mở là một bài mới có mã riêng, để bài sau không ghi đè bài trước.
-    const id = `bai-${crypto.randomUUID()}`;
-    const session: ReviewSession = {
-      id,
-      tableId: targetTable.id,
-      paper: { ...reviewPaper, id, info: keepInfo(reviewPaper.info), suggested_info: keepInfo(reviewPaper.suggested_info) },
-      fileName: null,
-      pages: null,
-      cells,
-      infoConfirmed: false,
-    };
-    setSavedTitle(null);
-    setQueue((current) => [...current, { id, tableId: targetTable.id, fileName: "Bài mẫu", size: 0, status: "ready", session, sample: true }]);
-    setOpenId(id);
-  }, [targetTable, hydrated]);
-
   const review = useMemo(() => queue.find((item) => item.id === openId && item.status === "ready")?.session ?? null, [queue, openId]);
 
   const updateOpen = useCallback(
@@ -1048,11 +993,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!review || !review.infoConfirmed || review.cells.some((cell) => cell.review === "pending")) return false;
     const queued = queue.find((item) => item.id === review.id);
     // Bài đã ghi số liệu (lưu rồi hoàn tác) thì lưu lại không ghi thêm, để số liệu bước duyệt không bị đếm hai lần.
-    const isSample = (queued?.sample ?? false) || isAppSamplePaper(review.paper.file?.name) || review.logged === true;
+    const alreadyLogged = review.logged === true;
     const table = tables.find((item) => item.id === review.tableId);
     const final = table ? pruneToColumns(review, table.columns) : review;
-    // Bài mẫu của bản xem thử không qua AI, bài mẫu do app tạo chỉ để thử: không ghi vào chỉ số.
-    const log: typeof logEvent = isSample ? () => undefined : logEvent;
+    const log: typeof logEvent = alreadyLogged ? () => undefined : logEvent;
 
     final.cells.forEach((cell) =>
       log(cell.review === "edited" ? "o_bi_sua" : "o_giu_nguyen", {
@@ -1081,7 +1025,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const after = { ...before, papers: [...before.papers.filter((paper) => paper.id !== saved.id), saved] };
       setTablesNow((current) => current.map((item) => (item.id === review.tableId ? after : item)));
       // Hoàn tác "Lưu vào bảng": bài quay về chờ duyệt, kết quả AI và phần đã duyệt còn nguyên.
-      if (queued && !queued.sample) {
+      if (queued) {
         savedReviews.current.set(review.id, { ...queued, session: { ...review, logged: true } });
         record(review.tableId, { label: `lưu bài “${saved.info.title}” vào bảng`, tableId: review.tableId, before, after, index, reviewId: review.id });
       }
@@ -1099,7 +1043,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Không ghi thao tác vào số liệu. Bảng đổi thì tự đồng bộ lên máy chủ như mọi thay đổi khác.
   const step = useCallback(
     (direction: "undo" | "redo") => {
-      if (demo) return;
       const key = activeId ?? NO_TABLE;
       const history = histories.current.get(key);
       const taken = history ? (direction === "undo" ? takeUndo(history) : takeRedo(history)) : null;
@@ -1136,7 +1079,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSavedTitle(null);
       setHistoryVersion((value) => value + 1);
     },
-    [activeId, demo, setTablesNow],
+    [activeId, setTablesNow],
   );
   const undo = useCallback(() => step("undo"), [step]);
   const redo = useCallback(() => step("redo"), [step]);
@@ -1174,7 +1117,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         after: restored,
         index: index === -1 ? next.length - 1 : index,
       });
-      setDemo(null);
       setSavedTitle(null);
       setActiveId(version.table_id);
     },
@@ -1183,9 +1125,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const history = useMemo(() => {
     void historyVersion;
-    const current = demo ? undefined : histories.current.get(activeId ?? NO_TABLE);
+    const current = histories.current.get(activeId ?? NO_TABLE);
     return { canUndo: Boolean(current?.undo.length), canRedo: Boolean(current?.redo.length), undoTitle: undoTitle(current), redoTitle: redoTitle(current) };
-  }, [activeId, demo, historyVersion]);
+  }, [activeId, historyVersion]);
 
   const value = useMemo(
     () => ({
@@ -1193,9 +1135,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       activeTable,
       setActiveTable,
       targetTable,
-      demoOpen: demo !== null,
-      openDemo,
-      closeDemo,
       deletePapers,
       history,
       undo,
@@ -1220,7 +1159,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       retryItem,
       removeItem,
       openReview,
-      startSampleReview,
       quickApprove,
       updateCell,
       updateInfo,
@@ -1249,9 +1187,6 @@ formatCells,
       activeTable,
       setActiveTable,
       targetTable,
-      demo,
-      openDemo,
-      closeDemo,
       deletePapers,
       history,
       undo,
@@ -1275,7 +1210,6 @@ formatCells,
       retryItem,
       removeItem,
       openReview,
-      startSampleReview,
       quickApprove,
       updateCell,
       updateInfo,

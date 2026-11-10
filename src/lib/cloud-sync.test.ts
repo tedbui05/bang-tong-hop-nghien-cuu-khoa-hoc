@@ -1,7 +1,7 @@
 // Test đồng bộ bảng với máy chủ: chỉ gửi phần đã đổi, xoá đúng dòng, chọn đúng bản làm gốc khi mở app.
 import { describe, expect, it } from "vitest";
 import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, toRows } from "./cloud-sync";
-import { sampleTable } from "./sample-data";
+import { sampleTable } from "@/test/sample-data";
 import type { SheetTable } from "./types";
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));

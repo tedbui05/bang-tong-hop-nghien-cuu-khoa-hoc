@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { sampleTable } from "@/lib/sample-data";
 import { useStore } from "@/lib/store";
 
 // Phải gõ đúng chữ này mới xoá được. Nhận cả hai cách bỏ dấu "XOÁ" và "XÓA", không phân biệt hoa thường.
@@ -11,7 +10,7 @@ export function isResetConfirmed(text: string) {
   return CONFIRM_WORDS.includes(text.normalize("NFC").trim().toLocaleUpperCase("vi"));
 }
 
-// Đưa app về dữ liệu mẫu ban đầu. Việc này XOÁ HẾT dữ liệu của người dùng, kể cả bảng do sinh viên tự tạo
+// Đưa app về bảng trống. Việc này XOÁ HẾT dữ liệu của người dùng, kể cả bảng do sinh viên tự tạo
 // và bản đã lưu trên máy chủ, không khôi phục được (người dùng chọn giữ cách xoá này, chỉ hỏi kỹ hơn, 9/11/2026).
 export function ResetDataButton() {
   const { resetData, tables, queue } = useStore();
@@ -27,9 +26,9 @@ export function ResetDataButton() {
     if (!open && element.open) element.close();
   }, [open]);
 
-  const ownTables = tables.filter((table) => table.id !== sampleTable.id);
+  const ownTables = tables;
   const ownPapers = ownTables.reduce((sum, table) => sum + table.papers.length, 0);
-  const waiting = queue.filter((item) => !item.sample && item.status !== "saved").length;
+  const waiting = queue.filter((item) => item.status !== "saved").length;
   const confirmed = isResetConfirmed(typed);
 
   function close() {
@@ -57,7 +56,7 @@ export function ResetDataButton() {
             <li>Các file PDF đã giữ trong trình duyệt</li>
             <li>Lịch sử phiên bản của mọi bảng</li>
           </ul>
-          <p>Sau đó app chỉ còn Bảng mẫu ban đầu. Không khôi phục lại được. Nếu cần giữ bảng, hãy xuất Excel trước.</p>
+          <p>Sau đó app trở về bảng trống. Không khôi phục lại được. Nếu cần giữ bảng, hãy xuất Excel trước.</p>
         </div>
         <label className="confirm-dialog__label" htmlFor="dat-lai-xac-nhan">
           Gõ chữ XOÁ để xác nhận

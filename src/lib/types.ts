@@ -53,7 +53,7 @@ export type Paper = {
   info: PaperInfo;
   // Thông tin AI đề xuất ban đầu. Trường nào thiếu là chưa có đề xuất.
   suggested_info: PaperInfo;
-  // Model AI đã điền bài này. Không có: bài mẫu của bản xem thử, chưa có AI điền.
+  // Model AI đã điền bài này. Không có: bài của bản cũ, chưa ghi model.
   filled_by?: FilledBy;
   // File PDF gốc đã giữ trong trình duyệt (paper-files.ts). hash để biết file tải lại có đúng là file cũ không.
   file?: { name: string; size: number; hash: string };

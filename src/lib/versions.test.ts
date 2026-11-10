@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sampleTable } from "./sample-data";
+import { sampleTable } from "@/test/sample-data";
 import { groupVersions, restoreTables, versionInsert, versionSnapshot, versionTitle, type VersionMeta } from "./versions";
 import type { SheetTable } from "./types";
 

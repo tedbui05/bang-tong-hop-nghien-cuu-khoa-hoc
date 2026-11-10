@@ -1,8 +1,5 @@
-// Kiểm tra bài mẫu do app tạo (public/bai-mau/, dựng bằng scripts/tao-bai-mau.mjs) vẫn đọc được
-// và vẫn cho ra đúng các trường hợp mà kịch bản demo dựa vào.
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+// Bài hư cấu dựng trong bộ nhớ (src/test/bai-mau.ts): đi qua đúng các bước đọc PDF, cắt tài liệu tham khảo,
+// kiểm tra câu trích như bài thật. Bài này chỉ dùng cho test, không còn nằm trong app (bỏ ngày 10/11/2026).
 import * as pdfjs from "pdfjs-dist";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PAPER_PAGES } from "@/test/bai-mau";
@@ -12,26 +9,13 @@ import { stripReferences } from "./strip-references";
 import { verifyQuote } from "./verify-quote";
 import { citesOtherSource } from "./cited-source";
 
-const FILE = path.join(process.cwd(), "public/bai-mau/bai-mau-do-app-tao.pdf");
-
 async function readSample(): Promise<PdfPage[]> {
-  const result = await readPdfFile(pdfFile(new Uint8Array(readFileSync(FILE)), "bai-mau-do-app-tao.pdf"), pdfjs as unknown as PdfEngine);
+  const result = await readPdfFile(pdfFile(makePdf(SAMPLE_PAPER_PAGES), "bai-hu-cau.pdf"), pdfjs as unknown as PdfEngine);
   if (!result.ok) throw new Error(result.error.title);
   return result.pages;
 }
 
-const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-
-describe("bài mẫu do app tạo", () => {
-  it("file PDF đã lưu khớp với nội dung trong src/test/bai-mau.ts", () => {
-    const saved = sha256(new Uint8Array(readFileSync(FILE)));
-    const built = sha256(makePdf(SAMPLE_PAPER_PAGES));
-    expect(
-      saved,
-      "public/bai-mau/bai-mau-do-app-tao.pdf không khớp với src/test/bai-mau.ts. Hãy chạy: node scripts/tao-bai-mau.mjs",
-    ).toBe(built);
-  });
-
+describe("bài hư cấu dựng cho test", () => {
   it("đọc được 5 trang, mỗi trang ghi rõ không phải bài báo thật", async () => {
     const pages = await readSample();
     expect(pages).toHaveLength(5);

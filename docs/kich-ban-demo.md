@@ -4,20 +4,21 @@ Mục tiêu: cho người xem thấy app giúp sinh viên lập bảng tổng qu
 
 Hai khoảnh khắc phải làm chậm lại cho người xem kịp thấy:
 
-1. **Rê chuột vào nhãn "tr. 2 · đã khớp"**: trang PDF hiện ra, câu trích tô vàng đúng chỗ.
-2. **Ô "cần kiểm tra"**: AI tóm tắt nhiều hơn câu nó trích, app không cho qua mà bắt sinh viên đối chiếu.
+1. **Rê chuột vào nhãn "tr. N · đã khớp"**: trang PDF hiện ra, câu trích tô vàng đúng chỗ.
+2. **Ô "cần kiểm tra"** (nếu bài có): app không cho qua mà bắt sinh viên đối chiếu với bài gốc.
 
 ## Bài dùng để demo
 
-Dùng **bài mẫu do app tạo** (`public/bai-mau/bai-mau-do-app-tao.pdf`), mở bằng nút **"Tải bài mẫu để thử"** ở trang Thêm bài. Bài này không phải bài báo thật: tên người, trường, tạp chí và số liệu đều là hư cấu, và đầu mỗi trang có ghi điều đó. Dùng bài này thì không lo bản quyền khi chiếu màn hình, và giám khảo tự bấm thử được ngay mà không cần bài báo riêng.
+App không còn bài mẫu, bảng minh hoạ hay nút "Tải bài mẫu để thử" (bỏ ngày 10/11/2026): người dùng mới bắt đầu từ bảng trống. Người demo tự chọn **một bài báo đã công bố**, tiếng Anh hoặc tiếng Việt, 8 đến 20 trang, có chữ bôi đen được (không phải bản scan). Nên chọn bài có phần hạn chế rõ ràng hoặc rõ ràng không có, để nói về quy tắc "không đoán".
 
-Đã chạy thật với Gemini ngày 9/11/2026: AI điền xong trong khoảng 20 giây, 4 ô "đã khớp", cột Hạn chế ghi "không tìm thấy" vì bài chỉ nêu khó khăn của các trường, không nêu hạn chế của chính nghiên cứu.
+Chiếu bài báo thật trong buổi demo thì được; chỉ không đưa ảnh chụp trang bài vào git (xem CLAUDE.md).
 
 ## Chuẩn bị trước buổi demo (10 phút)
 
 - Mở app trên trình duyệt sẽ dùng để chiếu, phóng to 110% đến 125% cho người ngồi xa đọc được.
 - Tạo sẵn bảng "Tổng quan chương 2" với bộ cột gợi ý (bước 1 bên dưới chỉ đi lướt).
-- **Chạy trước bài mẫu một lần** rồi để ở trạng thái "chờ duyệt", không bấm lưu. Bài chờ duyệt được giữ trong trình duyệt kể cả khi tải lại trang. Nếu lúc demo Gemini quá tải, mở bài này thay vì chờ. Lần chạy trước tốn 1 lượt AI.
+- **Chạy trước bài demo một lần** rồi để ở trạng thái "chờ duyệt", không bấm lưu. Bài chờ duyệt được giữ trong trình duyệt kể cả khi tải lại trang. Nếu lúc demo Gemini quá tải, mở bài này thay vì chờ. Lần chạy trước tốn 1 lượt AI.
+- Trong lần chạy trước, ghi lại ô nào "đã khớp" (dùng cho khoảnh khắc 1, kèm số trang) và ô nào "cần kiểm tra" (khoảnh khắc 2). AI có thể trả lời khác giữa hai lần chạy, nên nếu có thì dùng luôn bài đã chạy trước.
 - Kiểm tra mạng. AI và đăng nhập ẩn danh cần mạng; bảng đã lưu thì xem được khi mất mạng.
 - Đóng các tab khác, tắt thông báo của máy.
 
@@ -27,12 +28,12 @@ Dùng **bài mẫu do app tạo** (`public/bai-mau/bai-mau-do-app-tao.pdf`), m�
 |---|---|---|
 | 0:00–0:30 | Mở trang Bảng tổng hợp (bảng đã chuẩn bị). Muốn cho thấy người dùng mới thì mở cửa sổ ẩn danh: màn hình trống với nút "Tạo bảng đầu tiên" | "Sinh viên làm khoá luận phải đọc vài chục bài báo rồi tự chép vào Excel: tên bài, phương pháp, kết quả. Vừa lâu vừa dễ chép sai. App này để AI đề xuất, nhưng mỗi ô đều có câu trích và số trang để kiểm tra lại." |
 | 0:30–0:50 | Bấm **Tạo bảng**, cho xem các cột và dòng "AI cần tìm gì cho cột này" | "Sinh viên tự quyết bảng có những cột nào. AI đọc đúng mô tả này để biết cần tìm gì." (Không cần tạo mới, bảng đã chuẩn bị sẵn.) |
-| 0:50–1:20 | Vào **Thêm bài**, bấm **Tải bài mẫu để thử** | "Đây là bài mẫu do app tạo, không phải bài báo thật, để ai cũng thử được ngay. File PDF được đọc ngay trên trình duyệt, máy chủ chỉ nhận chữ để gửi cho AI." Trong lúc chờ: "AI chỉ đề xuất. Sau đó code thường, không dùng AI, tìm từng câu trích trong bài để xem có thật không và đúng trang không." |
+| 0:50–1:20 | Vào **Thêm bài**, kéo file PDF của bài demo vào | "File PDF được đọc ngay trên trình duyệt, máy chủ chỉ nhận chữ để gửi cho AI." Trong lúc chờ: "AI chỉ đề xuất. Sau đó code thường, không dùng AI, tìm từng câu trích trong bài để xem có thật không và đúng trang không." |
 | 1:20–1:40 | Khi dòng báo "AI đã điền xong", bấm **Duyệt bài** | "Mỗi ô có nhãn: đã khớp, đã sửa số trang, cần kiểm tra hoặc không tìm thấy." |
-| 1:40–2:20 | **Khoảnh khắc 1.** Rê chuột vào nhãn **tr. 2 · đã khớp** của ô Câu hỏi nghiên cứu, chờ khung hiện ra. Bấm **Mở bài gốc**: cả bài hiện toàn màn hình ở đúng trang, câu trích vẫn tô vàng, có danh sách các câu trích để bấm nhảy tới; rồi Esc | "Đây là trang 2 của file PDF, câu AI trích được tô vàng đúng chỗ. Sinh viên không phải lật bài đi tìm, chỉ cần liếc là biết AI nói có căn cứ hay không." |
-| 2:20–2:40 | Kéo xuống ô **Hạn chế**: "không tìm thấy" | "Bài chỉ nói khó khăn của các trường, không nói hạn chế của chính nghiên cứu. AI ghi 'không tìm thấy' chứ không đoán. Quy tắc của app là không đoán." |
+| 1:40–2:20 | **Khoảnh khắc 1.** Rê chuột vào nhãn **tr. N · đã khớp** của một ô đã ghi lại lúc chuẩn bị, chờ khung hiện ra. Bấm **Mở bài gốc**: cả bài hiện toàn màn hình ở đúng trang, câu trích vẫn tô vàng, có danh sách các câu trích để bấm nhảy tới; rồi Esc | "Đây là đúng trang của file PDF, câu AI trích được tô vàng đúng chỗ. Sinh viên không phải lật bài đi tìm, chỉ cần liếc là biết AI nói có căn cứ hay không." |
+| 2:20–2:40 | Nếu có ô "không tìm thấy" (thường là cột **Hạn chế**), chỉ vào ô đó | "Bài không nêu điều này, nên AI ghi 'không tìm thấy' chứ không đoán. Quy tắc của app là không đoán." |
 | 2:40–3:00 | Xác nhận thẻ Thông tin bài và các ô (Enter để sang ô tiếp theo), bấm **Lưu vào bảng** | "Nút lưu chỉ mở khi sinh viên đã xem hết từng ô. AI không bao giờ tự ghi vào bảng." |
-| 3:00–3:50 | **Khoảnh khắc 2.** Vào **Duyệt bài**, bấm **Xem bài mẫu**. Bấm vào thẻ **Kết quả** có nhãn "cần kiểm tra" | "Đây là một bài minh hoạ khác. AI viết: năng suất tăng 13%, trong đó 9% do làm nhiều phút hơn, 4% do nhận nhiều cuộc gọi hơn. Nhưng câu nó trích chỉ có hai chữ 'by 13%'. Quá ngắn, nên code không xác nhận được, và phần 9% với 4% không có căn cứ trong câu trích. Đây là lý do app bắt sinh viên duyệt: AI có thể viết hay hơn những gì nó chứng minh được." Bấm Enter một lần để thấy dòng nhắc "Bạn đã đối chiếu với bài gốc chưa?" |
+| 3:00–3:50 | **Khoảnh khắc 2.** Làm trước bước lưu ở trên: nếu bài có ô "cần kiểm tra", bấm vào ô đó, đọc lý do app ghi, bấm Enter một lần để thấy dòng nhắc "Bạn đã đối chiếu với bài gốc chưa?". Nếu bài không có ô nào như vậy, chỉ nói | "Câu trích không tìm thấy trong bài, quá ngắn, hoặc có ở nhiều trang thì app ghi 'cần kiểm tra' và bắt sinh viên xác nhận hai lần. Đây là lý do app bắt sinh viên duyệt: AI có thể viết hay hơn những gì nó chứng minh được." |
 | 3:50–4:30 | Quay về **Bảng tổng hợp**. Bấm đúp một ô để sửa, chọn ô rồi bấm Cmd/Ctrl + B và **Tô nền**, viết một dòng ở cột **Ghi chú** | "Bảng làm việc như Google Sheets: sửa trực tiếp, tô màu, ghi chú, gắn nhãn. Ô sinh viên sửa có chữ 'đã sửa' và vẫn giữ đề xuất ban đầu của AI." |
 | 4:30–4:50 | Bấm **Xuất Excel**, mở file | "Xuất ra Excel giữ nguyên định dạng và màu, để nộp hoặc dán vào khoá luận." |
 | 4:50–5:00 | Kết | "Tóm lại: AI làm phần chép, code kiểm tra câu trích, sinh viên giữ quyền quyết định." |

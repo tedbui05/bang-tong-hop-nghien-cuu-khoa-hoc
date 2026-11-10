@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fromRows, planSync, snapshotOf, toRows } from "./cloud-sync";
-import { sampleTable } from "./sample-data";
-import { isPristineSample, isSamplePaper, nextActiveAfterDelete, removePapers, restorePapers, startingTables } from "./table-ops";
+import { sampleTable } from "@/test/sample-data";
+import { isLegacySamplePaper, LEGACY_APP_SAMPLE_FILE, nextActiveAfterDelete, removePapers, restorePapers, startingTables } from "./table-ops";
 import type { SheetTable } from "./types";
 
 const own = (id: string, paperIds: string[] = []): SheetTable => ({
@@ -11,34 +11,47 @@ const own = (id: string, paperIds: string[] = []): SheetTable => ({
   papers: paperIds.map((paperId) => ({ ...sampleTable.papers[0], id: paperId })),
 });
 
-describe("bảng lúc mở app", () => {
+// Bài minh hoạ "Xem bài mẫu" của bản cũ: bài Bloom 2013, không có file PDF, mã bài ngẫu nhiên.
+const reviewSample = { ...sampleTable.papers[0], id: "bai-123", info: { ...sampleTable.papers[0].info, title: "Does Working from Home Work? Evidence from a Chinese Experiment" } };
+const appSample = { ...sampleTable.papers[0], id: "bai-456", file: { name: LEGACY_APP_SAMPLE_FILE, size: 1, hash: "x" } };
+
+describe("bảng lúc mở app: bỏ mọi bài mẫu của bản cũ", () => {
   it("người dùng mới: bảng trống", () => {
     expect(startingTables([])).toEqual([]);
   });
 
-  it("chỉ có Bảng mẫu y nguyên (bản cũ tự lưu): coi như người dùng mới", () => {
+  it("Bảng mẫu chỉ có bài mẫu thì bỏ cả bảng, kể cả khi đã sửa", () => {
     expect(startingTables([sampleTable])).toEqual([]);
-    // Bản đọc từ máy chủ đổi thứ tự trường và thêm tags rỗng, vẫn nhận ra là y nguyên.
+    expect(startingTables([{ ...sampleTable, name: "Bảng mẫu của tôi" }])).toEqual([]);
+    // Bản đọc từ máy chủ đổi thứ tự trường và thêm tags rỗng.
     const rows = toRows([sampleTable]);
-    const fromServer = fromRows(rows.tables, rows.papers);
-    expect(isPristineSample(fromServer[0])).toBe(true);
-    expect(startingTables(fromServer)).toEqual([]);
+    expect(startingTables(fromRows(rows.tables, rows.papers))).toEqual([]);
   });
 
-  it("Bảng mẫu đã sửa thì giữ", () => {
-    const edited = { ...sampleTable, name: "Bảng mẫu của tôi" };
-    expect(startingTables([edited])).toEqual([edited]);
-    const withNote = { ...sampleTable, papers: sampleTable.papers.map((paper, i) => (i === 0 ? { ...paper, note: "đọc lại" } : paper)) };
-    expect(startingTables([withNote])).toHaveLength(1);
+  it("Bảng mẫu có bài người dùng tự thêm thì giữ bảng với các bài đó, bỏ dòng mô tả minh hoạ", () => {
+    const mine = { ...sampleTable.papers[0], id: "bai-cua-toi", info: { ...sampleTable.papers[0].info, title: "Bài của tôi" } };
+    const [kept] = startingTables([{ ...sampleTable, papers: [...sampleTable.papers, mine] }]);
+    expect(kept.papers.map((paper) => paper.id)).toEqual(["bai-cua-toi"]);
+    expect(kept.description).toBe("");
   });
 
-  it("có bảng khác thì giữ cả Bảng mẫu", () => {
-    expect(startingTables([sampleTable, own("a")])).toHaveLength(2);
+  it("bỏ bài minh hoạ và bài mẫu do app tạo ở bảng riêng, giữ bảng và bài khác", () => {
+    const table = { ...own("a", ["p1"]), papers: [...own("a", ["p1"]).papers, reviewSample, appSample] };
+    const [kept] = startingTables([table]);
+    expect(kept.papers.map((paper) => paper.id)).toEqual(["p1"]);
+    expect(startingTables([own("b")])).toEqual([own("b")]);
   });
 
-  it("nhận ra bài có sẵn của Bảng mẫu", () => {
-    expect(isSamplePaper(sampleTable.papers[0].id)).toBe(true);
-    expect(isSamplePaper("bai-cua-toi")).toBe(false);
+  it("không có gì để bỏ thì trả về đúng mảng cũ", () => {
+    const list = [own("a", ["p1"])];
+    expect(startingTables(list)).toBe(list);
+  });
+
+  it("nhận ra bài mẫu của bản cũ", () => {
+    expect(isLegacySamplePaper(sampleTable.papers[0], sampleTable.id)).toBe(true);
+    expect(isLegacySamplePaper(sampleTable.papers[0], "bang-khac")).toBe(false);
+    expect(isLegacySamplePaper(reviewSample, "bang-khac")).toBe(true);
+    expect(isLegacySamplePaper(appSample, "bang-khac")).toBe(true);
   });
 });
 
@@ -101,7 +114,7 @@ describe("xoá bảng", () => {
     expect(plan.deletePapers).toEqual([]);
   });
 
-  it("bỏ Bảng mẫu y nguyên trên máy chủ: lần đồng bộ sau xoá dòng đó", () => {
+  it("bỏ Bảng mẫu trên máy chủ: lần đồng bộ sau xoá dòng đó", () => {
     const plan = planSync(snapshotOf([sampleTable]), startingTables([sampleTable]));
     expect(plan.deleteTables).toEqual([sampleTable.id]);
   });

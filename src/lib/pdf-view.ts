@@ -41,7 +41,7 @@ function touch<K, V>(map: Map<K, V>, key: K, value: V) {
   map.set(key, value);
 }
 
-// Mở file PDF đã giữ trong trình duyệt. null: không còn file (đã xoá dữ liệu, bài mẫu, trình duyệt chặn bộ nhớ).
+// Mở file PDF đã giữ trong trình duyệt. null: không còn file (đã xoá dữ liệu, trình duyệt chặn bộ nhớ).
 export function openPaperPdf(paperId: string): Promise<PDFDocumentProxy | null> {
   const cached = docs.get(paperId);
   if (cached) {

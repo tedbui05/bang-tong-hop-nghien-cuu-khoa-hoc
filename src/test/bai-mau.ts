@@ -1,6 +1,6 @@
-// Nội dung bài mẫu do app tạo (public/bai-mau/bai-mau-do-app-tao.pdf). ĐÂY KHÔNG PHẢI BÀI BÁO THẬT:
-// tên người, trường, tạp chí và số liệu đều là hư cấu. Script scripts/tao-bai-mau.mjs dựng file PDF từ đây,
-// test src/lib/sample-paper.test.ts dựng lại trong bộ nhớ để chắc file đã lưu khớp với nội dung này.
+// Bài hư cấu chỉ dùng cho test (trước đây là "bài mẫu do app tạo", đã bỏ khỏi app ngày 10/11/2026).
+// ĐÂY KHÔNG PHẢI BÀI BÁO THẬT: tên người, trường, tạp chí và số liệu đều là hư cấu.
+// Test src/lib/sample-paper.test.ts dựng file PDF trong bộ nhớ từ nội dung này.
 //
 // Bài được viết để thấy đủ các trường hợp của app khi AI điền thật:
 // - Câu "Peer tutoring raised weekly reading time..." có ở cả trang 1 và trang 3, nên nếu AI trích riêng câu này thì code báo "cần kiểm tra".
