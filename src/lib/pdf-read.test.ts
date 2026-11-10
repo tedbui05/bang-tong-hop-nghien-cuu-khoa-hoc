@@ -3,7 +3,7 @@ import path from "node:path";
 import * as pdfjs from "pdfjs-dist";
 import { describe, expect, it } from "vitest";
 import { makePdf, pdfFile } from "@/test/make-pdf";
-import { MAX_PDF_BYTES, checkPdfFile, joinTextItems, looksScanned, readPdfFile, type PdfEngine, type PdfReadResult } from "./pdf-read";
+import { MAX_PDF_BYTES, checkPdfFile, classifyReadError, describeError, joinTextItems, looksScanned, readPdfFile, type PdfEngine, type PdfReadResult } from "./pdf-read";
 
 const cMapUrl = path.join(path.dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json")), "cmaps") + path.sep;
 const engine = pdfjs as unknown as PdfEngine;
@@ -178,5 +178,57 @@ describe("lỗi 4: PDF là ảnh scan, không có chữ", () => {
     expect(looksScanned([{ page: 1, text: "Nghiên cứu này khảo sát học sinh" }])).toBe(false);
     expect(looksScanned([{ page: 1, text: "本研究以农村地区的小学生为对象进行调查分析了阅读能力" }])).toBe(false);
     expect(looksScanned([{ page: 1, text: " \n \n " }])).toBe(true);
+  });
+});
+
+describe("lỗi khi đọc: chỉ nói file hỏng khi đúng là file hỏng, và ghi lỗi gốc", () => {
+  // Giống lỗi pdf.js gửi về khi worker chạy hỏng vì trình duyệt thiếu tính năng (Uint8Array.prototype.toHex).
+  const workerTypeError = Object.assign(new Error("a.toHex is not a function"), {
+    name: "UnknownErrorException",
+    details: "TypeError: a.toHex is not a function",
+  });
+  const failingEngine = (error: unknown): PdfEngine => ({
+    getDocument: () => ({ promise: Promise.reject(error), destroy: async () => undefined }),
+  });
+  const validPdf = () => pdfFile(makePdf([{ lines: ["A short page of text for the reading test."] }]), "bai.pdf");
+
+  it("phân loại lỗi", () => {
+    expect(classifyReadError(Object.assign(new Error("Invalid PDF structure."), { name: "InvalidPDFException" }))).toBe("damaged");
+    expect(classifyReadError(Object.assign(new Error("Bad FCHECK in flate stream"), { name: "FormatError" }))).toBe("damaged");
+    expect(classifyReadError(workerTypeError)).toBe("browser");
+    expect(classifyReadError(new TypeError("Map.prototype.getOrInsertComputed is not a function"))).toBe("browser");
+    expect(classifyReadError(new Error("Setting up fake worker failed"))).toBe("browser");
+    expect(classifyReadError(new Error("something odd"))).toBe("read_failed");
+  });
+
+  it("trình duyệt thiếu tính năng: báo lỗi ở trình duyệt, không nói file hỏng, cho thử lại", async () => {
+    const error = expectError(await readPdfFile(validPdf(), failingEngine(workerTypeError)));
+    expect(error.code).toBe("browser");
+    expect(error.detail).toContain("không phải ở “bai.pdf”");
+    expect(error.detail).not.toContain("hỏng");
+    expect(error.retry).toBe(true);
+  });
+
+  it("lỗi chưa rõ: không đổ cho file", async () => {
+    const error = expectError(await readPdfFile(validPdf(), failingEngine(new Error("something odd"))));
+    expect(error.code).toBe("read_failed");
+    expect(error.detail).not.toContain("hỏng");
+  });
+
+  it("ghi lỗi gốc kèm tên file, kể cả khi file hỏng thật", async () => {
+    const logged: string[] = [];
+    const logError = (message: string, error: unknown) => logged.push(`${message} | ${describeError(error)}`);
+    await readPdfFile(validPdf(), failingEngine(workerTypeError), { logError });
+    await readPdfFile(pdfFile("%PDF-1.7\nđây không phải nội dung PDF", "bai-hong.pdf"), engine, { logError });
+    expect(logged[0]).toBe('[đọc PDF] Lỗi khi mở "bai.pdf" | UnknownErrorException: a.toHex is not a function: TypeError: a.toHex is not a function');
+    expect(logged[1]).toMatch(/^\[đọc PDF\] Lỗi khi mở "bai-hong.pdf" \| InvalidPDFException/);
+  });
+
+  it("file có mật khẩu không bị ghi là lỗi", async () => {
+    const logged: unknown[] = [];
+    const locked = makePdf([{ lines: ["Secret"] }], { encrypt: { userPassword: "abc", ownerPassword: "xyz" } });
+    const error = expectError(await readPdfFile(pdfFile(locked, "khoa.pdf"), engine, { logError: (_m, e) => logged.push(e) }));
+    expect(error.code).toBe("password");
+    expect(logged).toHaveLength(0);
   });
 });

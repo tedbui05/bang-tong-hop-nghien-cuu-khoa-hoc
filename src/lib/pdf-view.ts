@@ -1,18 +1,19 @@
 // Xem trang PDF gốc để đối chiếu bằng chứng, ngay trên trình duyệt (pdf.js). Chỉ tải khi có người mở xem,
 // và giữ lại những gì đã tải (file đã mở, trang đã vẽ, chữ của trang) để lần sau mở nhanh.
 // Tô vàng dựa trên lớp chữ của PDF và vị trí câu trích mà code kiểm tra đã tìm ra (AiCell.quote_ranges), không nhờ AI.
-import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { TextContent, TextItem } from "pdfjs-dist/types/src/display/api";
 import { loadPdf } from "./paper-files";
 import { joinTextItems } from "./pdf-read";
 import type { TextRange } from "./types";
 
-type PdfLib = typeof import("pdfjs-dist");
+// Bản legacy, giống pdf-browser.ts: chạy được trên trình duyệt cũ hơn.
+type PdfLib = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 
 let lib: Promise<PdfLib> | null = null;
 
 function loadLib(): Promise<PdfLib> {
-  lib ??= import("pdfjs-dist")
+  lib ??= import("pdfjs-dist/legacy/build/pdf.mjs")
     .then((pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
       return pdfjs;

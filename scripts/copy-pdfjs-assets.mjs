@@ -9,7 +9,9 @@ const root = path.dirname(createRequire(import.meta.url).resolve("pdfjs-dist/pac
 const target = path.resolve(import.meta.dirname, "..", "public", "pdfjs");
 
 mkdirSync(target, { recursive: true });
-cpSync(path.join(root, "build", "pdf.worker.min.mjs"), path.join(target, "pdf.worker.min.mjs"));
+// Bản legacy có sẵn phần bù cho trình duyệt cũ hơn (ví dụ Uint8Array.prototype.toHex chỉ có từ Chrome 140,
+// Safari 18.2). Bản thường thiếu các tính năng đó thì mọi file đều đọc lỗi. Trang web cũng import bản legacy.
+cpSync(path.join(root, "legacy", "build", "pdf.worker.min.mjs"), path.join(target, "pdf.worker.min.mjs"));
 cpSync(path.join(root, "cmaps"), path.join(target, "cmaps"), { recursive: true });
 cpSync(path.join(root, "standard_fonts"), path.join(target, "standard_fonts"), { recursive: true });
 cpSync(path.join(root, "wasm"), path.join(target, "wasm"), { recursive: true });

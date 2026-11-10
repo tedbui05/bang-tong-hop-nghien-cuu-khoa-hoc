@@ -20,7 +20,9 @@ const HEADER_BYTES = 1024;
 // "trang X của file PDF": đếm từ 1 theo thứ tự trong file, có thể lệch với số in trên trang.
 export type PdfPage = { page: number; text: string };
 
-export type PdfErrorCode = "not_pdf" | "empty" | "too_large" | "password" | "scanned" | "damaged";
+// "damaged": file hỏng thật (pdf.js báo cấu trúc PDF sai). "browser": trình duyệt chưa chạy được công cụ đọc PDF
+// (thiếu tính năng JavaScript, worker không chạy), file không có lỗi. "read_failed": lỗi khác chưa rõ nguyên nhân.
+export type PdfErrorCode = "not_pdf" | "empty" | "too_large" | "password" | "scanned" | "damaged" | "browser" | "read_failed";
 
 // retry: thử lại có ích không (ví dụ mất mạng khi tải công cụ đọc PDF). Lỗi của chính file thì không.
 export type PdfError = { code: PdfErrorCode; title: string; detail: string; retry?: boolean };
@@ -34,8 +36,9 @@ type PdfDocument = { numPages: number; getPage: (n: number) => Promise<PdfPagePr
 export type PdfEngine = {
   getDocument: (options: Record<string, unknown>) => { promise: Promise<PdfDocument>; destroy: () => Promise<void> };
 };
-// Đường dẫn bộ mã chữ (cMap). Thiếu thì nhiều bài tiếng Trung, Nhật, Hàn không lấy được chữ.
-export type PdfEngineOptions = { cMapUrl?: string };
+// cMapUrl: đường dẫn bộ mã chữ (cMap). Thiếu thì nhiều bài tiếng Trung, Nhật, Hàn không lấy được chữ.
+// logError: nơi ghi lỗi gốc của pdf.js (trên trình duyệt là console.error), để lần sau tìm được nguyên nhân thật.
+export type PdfEngineOptions = { cMapUrl?: string; logError?: (message: string, error: unknown) => void };
 
 type FileLike = Pick<Blob, "size" | "slice" | "arrayBuffer"> & { name: string };
 
@@ -86,6 +89,20 @@ export function pdfError(code: PdfErrorCode, fileName: string, size = 0): PdfErr
         title: "Chưa đọc được file này",
         detail: `“${fileName}” có thể bị hỏng hoặc tải về chưa trọn. Hãy tải lại bài báo rồi thử lại.`,
       };
+    case "browser":
+      return {
+        code,
+        title: "Trình duyệt này chưa đọc được file PDF",
+        detail: `Lỗi nằm ở trình duyệt, không phải ở “${fileName}”. Hãy cập nhật Chrome, Edge, Safari hoặc Firefox lên bản mới nhất rồi bấm Thử lại.`,
+        retry: true,
+      };
+    case "read_failed":
+      return {
+        code,
+        title: "Chưa đọc được file này",
+        detail: `App gặp lỗi khi đọc “${fileName}”. Hãy bấm Thử lại; nếu vẫn lỗi, hãy thử bằng trình duyệt khác.`,
+        retry: true,
+      };
   }
 }
 
@@ -125,6 +142,22 @@ export function looksScanned(pages: PdfPage[]) {
   return withText / pages.length < MIN_TEXT_PAGE_SHARE;
 }
 
+// "Tên lỗi: nội dung", kèm phần chi tiết pdf.js gửi về từ worker (details), để ghi vào nhật ký trình duyệt.
+export function describeError(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error);
+  const { name, message, details } = error as { name?: unknown; message?: unknown; details?: unknown };
+  return [name, message, details].filter((part) => part !== undefined && part !== "").map(String).join(": ");
+}
+
+// pdf.js báo file hỏng bằng các lỗi này. Lỗi khác (ví dụ TypeError khi trình duyệt thiếu tính năng) không phải lỗi của file.
+const DAMAGED_FILE_ERRORS = new Set(["InvalidPDFException", "FormatError"]);
+const BROWSER_ERROR = /\b(TypeError|ReferenceError|SyntaxError)\b|is not a function|is not defined|fake worker|Worker/;
+
+export function classifyReadError(error: unknown): "damaged" | "browser" | "read_failed" {
+  if (DAMAGED_FILE_ERRORS.has(errorName(error))) return "damaged";
+  return BROWSER_ERROR.test(describeError(error)) ? "browser" : "read_failed";
+}
+
 function errorName(error: unknown) {
   return error && typeof error === "object" && "name" in error ? String(error.name) : "";
 }
@@ -150,7 +183,9 @@ export async function readPdfFile(file: FileLike, engine: PdfEngine, options: Pd
     doc = await task.promise;
   } catch (error) {
     await task.destroy().catch(() => undefined);
-    return { ok: false, error: pdfError(errorName(error) === "PasswordException" ? "password" : "damaged", file.name) };
+    if (errorName(error) === "PasswordException") return { ok: false, error: pdfError("password", file.name) };
+    options.logError?.(`[đọc PDF] Lỗi khi mở "${file.name}"`, error);
+    return { ok: false, error: pdfError(classifyReadError(error), file.name) };
   }
 
   try {
@@ -163,9 +198,10 @@ export async function readPdfFile(file: FileLike, engine: PdfEngine, options: Pd
     }
     if (looksScanned(pages)) return { ok: false, error: pdfError("scanned", file.name) };
     return { ok: true, pages };
-  } catch {
+  } catch (error) {
     // Một trang đọc lỗi thì báo lỗi cả file, không lặng lẽ bỏ trang: câu trích ở trang đó sẽ bị coi là bịa.
-    return { ok: false, error: pdfError("damaged", file.name) };
+    options.logError?.(`[đọc PDF] Lỗi khi lấy chữ của "${file.name}"`, error);
+    return { ok: false, error: pdfError(classifyReadError(error), file.name) };
   } finally {
     // Giải phóng bộ nhớ của pdf.js, kể cả khi đọc lỗi giữa chừng.
     await task.destroy().catch(() => undefined);

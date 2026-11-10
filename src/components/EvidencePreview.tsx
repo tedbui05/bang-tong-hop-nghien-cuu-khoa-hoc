@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { evidenceLabel, evidenceSpokenLabel, evidenceView, NOT_MARKED_NOTE } from "@/lib/evidence";
 import { fileHash, loadPages, savePdf } from "@/lib/paper-files";
 import type { PdfPage } from "@/lib/pdf-read";
