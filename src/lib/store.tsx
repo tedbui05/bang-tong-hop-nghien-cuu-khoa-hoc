@@ -6,6 +6,7 @@ import { moveColumn as moveInList, reorderColumns as reorderList, TITLE_COLUMN_I
 import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, type Snapshot } from "./cloud-sync";
 import { logEvent, scheduleFlush, setEventSender } from "./events";
 import { isAppSamplePaper } from "./app-sample";
+import { isSaveShortcut } from "./save-status";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
 import { isSamplePaper, nextActiveAfterDelete, removePapers, restorePapers, SAMPLE_TABLE_ID, startingTables, type RemovedPapers } from "./table-ops";
 import type { FillKey, TagColorKey } from "./palette";
@@ -153,6 +154,8 @@ type Store = {
   hydrated: boolean;
   saveFailed: boolean;
   cloud: CloudState;
+  savedAt: number | null;
+  saveFlash: number;
   // Lưu ngay mọi thay đổi lên máy chủ (trước khi xuất Excel). true: máy chủ đã có đúng dữ liệu đang thấy.
   syncNow: () => Promise<boolean>;
   resetData: () => Promise<void>;
@@ -242,6 +245,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [saveFailed, setSaveFailed] = useState(false);
   const skipReset = useRef(false);
   const [cloud, setCloud] = useState<CloudState>("local");
+  // Lúc lưu xong gần nhất (lên máy chủ, hoặc vào trình duyệt khi chưa cài máy chủ), cho dòng "Đã lưu lúc 08:10".
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  // Tăng mỗi lần bấm Cmd+S, để trang bảng chớp chữ "Đã lưu".
+  const [saveFlash, setSaveFlash] = useState(0);
   // Bản dữ liệu đang có trên máy chủ. null: chưa đọc từ máy chủ (chưa bắt đầu đồng bộ).
   const snapshot = useRef<Snapshot | null>(null);
   const cloudStarted = useRef(false);
@@ -293,6 +300,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await supabaseRemote.apply(plan);
         snapshot.current = snapshotOf(current);
         if (tablesRef.current === current) writeDirty(false);
+        setSavedAt(Date.now());
         setCloud("saved");
         return true;
       } catch {
@@ -349,6 +357,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, activeId }));
         setSaveFailed(false);
+        if (!cloudConfigured()) setSavedAt(Date.now());
       } catch {
         setSaveFailed(true);
       }
@@ -398,6 +407,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     return sync();
   }, [sync, start]);
+
+  // Cmd+S: lưu ngay những gì chưa gửi. Không có gì mới thì không gửi gì, chỉ báo "Đã lưu".
+  const saveNow = useCallback(async () => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables: tablesRef.current, activeId }));
+      setSaveFailed(false);
+    } catch {
+      setSaveFailed(true);
+    }
+    if (cloudConfigured() && (snapshot.current || JSON.stringify(tablesRef.current) !== PRISTINE)) await syncNow();
+    else if (!cloudConfigured()) setSavedAt(Date.now());
+    setSaveFlash((value) => value + 1);
+  }, [activeId, syncNow]);
+
+  // Cmd+S / Ctrl+S ở mọi trang: không mở hộp lưu trang của trình duyệt, chỉ lưu ngay.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isSaveShortcut(event)) return;
+      event.preventDefault();
+      void saveNow();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [saveNow]);
 
   const resetData = useCallback(async () => {
     // Dữ liệu đã lưu lên máy chủ cũng phải xoá, không thì mở lại app sẽ đọc lại từ máy chủ.
@@ -1022,6 +1055,8 @@ formatCells,
       hydrated,
       saveFailed,
       cloud,
+      savedAt,
+      saveFlash,
       syncNow,
       resetData,
       editSavedCell,
@@ -1069,6 +1104,8 @@ formatCells,
       hydrated,
       saveFailed,
       cloud,
+      savedAt,
+      saveFlash,
       syncNow,
       resetData,
       editSavedCell,

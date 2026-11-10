@@ -19,6 +19,7 @@ import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 import { useScrollHint } from "./useScrollHint";
 import { ResetDataButton } from "./ResetDataButton";
+import { SaveStatus } from "./SaveStatus";
 import { DeleteTableDialog, RowMenu, SelectionBar, UndoToast } from "./TableActions";
 import { SAMPLE_TABLE_ID, type RemovedPapers } from "@/lib/table-ops";
 
@@ -289,6 +290,7 @@ function Sheet({ table }: { table: SheetTable }) {
         <div className="sheet-titlebar__text">
           <h1>{table.name}</h1>
           <p>{table.description || `${papers.length} bài, ${columns.length} cột`}</p>
+          {demoOpen ? null : <SaveStatus />}
         </div>
         <div className="sheet-titlebar__actions">
           {!demoOpen && tables.length > 1 ? (

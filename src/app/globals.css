@@ -3586,3 +3586,31 @@ a.ev-pop__button {
     bottom: 56px;
   }
 }
+
+/* Trạng thái lưu ở đầu bảng (nền màu nhấn đậm) */
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--on-accent-soft);
+  font-size: 13px;
+}
+
+.save-status--warn {
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.save-status .spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.save-status__flash {
+  padding: 0 8px;
+  background: var(--on-accent-hover);
+  border-radius: 999px;
+  color: var(--on-accent);
+  font-weight: 600;
+}
