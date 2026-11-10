@@ -15,7 +15,8 @@ import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPend
 import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
 import { readPdfInBrowser } from "./pdf-browser";
 import { processPaper, type FileMeta } from "./process-paper";
-import { cloudConfigured, currentUserId, getAccessToken, sendEvents, supabaseRemote } from "./supabase-browser";
+import { cloudConfigured, currentUserId, getAccessToken, sendEvents, supabaseRemote, versionsRemote } from "./supabase-browser";
+import { restoreTables, versionInsert, versionTitle, type VersionMeta } from "./versions";
 import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInfo, type ReviewCell, type SavedPaper, type SheetTable, type TableColumn } from "./types";
 
 // Bản xem thử giữ dữ liệu trong trình duyệt để tải lại trang không mất bảng và định dạng.
@@ -118,6 +119,12 @@ type Store = {
   undoIfLatest: (entryId: number) => void;
   // Xoá cả một bảng riêng, kể cả bài chờ duyệt của bảng đó.
   deleteTable: (tableId: string) => void;
+  // Lịch sử phiên bản (Supabase). Chỉ dùng được khi đã cài máy chủ.
+  versionsEnabled: boolean;
+  listVersions: () => Promise<VersionMeta[]>;
+  saveVersion: (name: string) => Promise<VersionMeta>;
+  // Khôi phục: lưu bảng hiện tại thành một phiên bản mới trước, rồi mới thay bằng phiên bản đã chọn.
+  restoreVersion: (versionId: string) => Promise<void>;
   createTable: (name: string, description: string, columns: TableColumn[]) => void;
   // Các thao tác với cột luôn áp dụng cho bảng đang mở.
   addColumn: (column: TableColumn) => void;
@@ -488,6 +495,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return id;
   }, []);
 
+  // Tự lưu một phiên bản trước thao tác lớn (xoá cột, xoá nhiều bài, xoá bảng). Chạy ngầm; lỗi thì bỏ qua,
+  // vì thao tác đó vẫn hoàn tác được trong phiên. Không có máy chủ hoặc đang xem bảng minh hoạ thì không lưu.
+  const autoVersion = useCallback(
+    (table: SheetTable | undefined, reason: string) => {
+      if (!table || demo || !cloudConfigured()) return;
+      void versionsRemote.save(versionInsert(table, { reason })).catch(() => undefined);
+    },
+    [demo],
+  );
+
   // Đang xem bảng minh hoạ: sửa trong bộ nhớ, không vào danh sách bảng nên không lưu, không đồng bộ, không có lịch sử.
   // label: tên thao tác để hoàn tác ("xoá cột Hạn chế"); không có thì thao tác không vào lịch sử (ví dụ đổi độ rộng cột).
   const updateActive = useCallback(
@@ -541,10 +558,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const count = removed.items.length;
       if (!count) return null;
       const label = count === 1 ? `xoá bài “${removed.items[0].paper.info.title}”` : `xoá ${count} bài`;
+      if (count > 1) autoVersion(tablesRef.current.find((item) => item.id === table.id), `Trước khi xoá ${count} bài`);
       const entryId = updateActive((current) => removePapers(current, paperIds).table, label);
       return { count, entryId };
     },
-    [activeTable, updateActive],
+    [activeTable, updateActive, autoVersion],
   );
 
   // Xoá cả bảng (đã hỏi lại ở giao diện) và bài chờ duyệt của bảng đó. Không ghi thao tác. Hoàn tác được:
@@ -554,6 +572,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const table = tablesRef.current[index];
     if (!table) return;
     const next = nextActiveAfterDelete(tablesRef.current, tableId);
+    autoVersion(table, tableId === SAMPLE_TABLE_ID ? "Trước khi bỏ bảng minh hoạ" : "Trước khi xoá bảng");
     setTablesNow((current) => current.filter((item) => item.id !== tableId));
     setActiveId((current) => (current === tableId ? next : current));
     setSavedTitle(null);
@@ -576,7 +595,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return current.filter((item) => item.tableId !== tableId);
     });
     setOpenId((current) => (current && queueRef.current.find((item) => item.id === current)?.tableId === tableId ? null : current));
-  }, [record, setTablesNow]);
+  }, [record, setTablesNow, autoVersion]);
 
   const addColumn = useCallback<Store["addColumn"]>(
     (column) => void updateActive((table) => ({ ...table, columns: [...table.columns, column] }), `thêm cột ${column.name}`),
@@ -613,6 +632,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (id === TITLE_COLUMN_ID || !activeId) return;
       const column = activeTable?.columns.find((item) => item.id === id);
       if (!column) return;
+      autoVersion(tablesRef.current.find((item) => item.id === activeId), `Trước khi xoá cột ${column.name}`);
       updateActive(
         (table) => ({
           ...table,
@@ -631,7 +651,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             },
       );
     },
-    [activeId, activeTable, updateActive, mapSessions, sessionTableId],
+    [activeId, activeTable, updateActive, mapSessions, sessionTableId, autoVersion],
   );
 
   const applyOrder = useCallback(
@@ -1126,6 +1146,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [activeId, step],
   );
+  const listVersions = useCallback(() => versionsRemote.list(), []);
+
+  const saveVersion = useCallback<Store["saveVersion"]>(
+    async (name) => {
+      const table = tablesRef.current.find((item) => item.id === activeId);
+      if (!table) throw new Error("chưa có bảng");
+      return versionsRemote.save(versionInsert(table, { name }));
+    },
+    [activeId],
+  );
+
+  const restoreVersion = useCallback<Store["restoreVersion"]>(
+    async (versionId) => {
+      const version = await versionsRemote.load(versionId);
+      const title = versionTitle(version);
+      const index = tablesRef.current.findIndex((item) => item.id === version.table_id);
+      const current = tablesRef.current[index] ?? null;
+      // Không xoá trạng thái hiện tại: lưu nó thành phiên bản mới trước. Lưu không được thì không khôi phục.
+      if (current) await versionsRemote.save(versionInsert(current, { reason: `Trước khi khôi phục “${title}”` }));
+      const next = setTablesNow((tables) => restoreTables(tables, version.data));
+      const restored = next.find((item) => item.id === version.table_id) ?? null;
+      record(version.table_id, {
+        label: `khôi phục phiên bản “${title}”`,
+        tableId: version.table_id,
+        before: current,
+        after: restored,
+        index: index === -1 ? next.length - 1 : index,
+      });
+      setDemo(null);
+      setSavedTitle(null);
+      setActiveId(version.table_id);
+    },
+    [record, setTablesNow],
+  );
+
   const history = useMemo(() => {
     void historyVersion;
     const current = demo ? undefined : histories.current.get(activeId ?? NO_TABLE);
@@ -1147,6 +1202,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       redo,
       undoIfLatest,
       deleteTable,
+      versionsEnabled: cloudConfigured(),
+      listVersions,
+      saveVersion,
+      restoreVersion,
       createTable,
       addColumn,
       changeColumn,
@@ -1199,6 +1258,9 @@ formatCells,
       redo,
       undoIfLatest,
       deleteTable,
+      listVersions,
+      saveVersion,
+      restoreVersion,
       createTable,
       addColumn,
       changeColumn,

@@ -20,6 +20,7 @@ import { SkeletonLines, StateMessage } from "./StateMessage";
 import { useScrollHint } from "./useScrollHint";
 import { ResetDataButton } from "./ResetDataButton";
 import { SaveStatus } from "./SaveStatus";
+import { VersionHistory } from "./VersionHistory";
 import { DeleteTableDialog, RowMenu, SelectionBar, UndoToast } from "./TableActions";
 import { SAMPLE_TABLE_ID } from "@/lib/table-ops";
 import { historyShortcut, isTypingTarget } from "@/lib/history";
@@ -28,7 +29,8 @@ const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", 
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { activeTable, hydrated, demoOpen, openDemo, closeDemo, history, undo, redo } = useStore();
+  const { activeTable, hydrated, demoOpen, openDemo, closeDemo, history, undo, redo, versionsEnabled } = useStore();
+  const [showDeleted, setShowDeleted] = useState(false);
   const table = state === "trong" ? null : activeTable;
   // Bảng minh hoạ chỉ sống trong trang này: rời trang là đóng.
   useEffect(() => closeDemo, [closeDemo]);
@@ -119,7 +121,13 @@ export function TableView({ state }: { state: PreviewState }) {
             <button type="button" className="link-button" onClick={openDemo}>
               Xem bảng minh hoạ
             </button>
+            {versionsEnabled ? (
+              <button type="button" className="link-button" onClick={() => setShowDeleted(true)}>
+                Khôi phục bảng đã xoá
+              </button>
+            ) : null}
           </div>
+          {showDeleted ? <VersionHistory table={null} onClose={() => setShowDeleted(false)} /> : null}
         </section>
       ) : null}
 
@@ -201,6 +209,13 @@ function Sheet({ table }: { table: SheetTable }) {
   const [rowMenu, setRowMenu] = useState<{ paperId: string; x: number; y: number } | null>(null);
   const [undo, setUndo] = useState<{ message: string; entryId: number | null; key: number } | null>(null);
   const [askDeleteTable, setAskDeleteTable] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  // Chọn một mục trong "Tuỳ chọn bảng" thì đóng danh sách lại.
+  const tableOptions = useRef<HTMLDetailsElement | null>(null);
+  const pickOption = (run: () => void) => () => {
+    if (tableOptions.current) tableOptions.current.open = false;
+    run();
+  };
   // Khung xem trước trang PDF khi rê chuột, Tab hoặc bấm vào nhãn bằng chứng trong ô.
   const preview = useEvidencePreview();
   const tags = table.tags ?? [];
@@ -331,10 +346,13 @@ function Sheet({ table }: { table: SheetTable }) {
             </label>
           ) : null}
           {demoOpen ? null : (
-            <details className="table-options">
+            <details ref={tableOptions} className="table-options">
               <summary className="button sheet-titlebar__ghost">Tuỳ chọn bảng</summary>
               <div className="table-options__panel">
-                <button type="button" className="row-menu__item" onClick={() => setAskDeleteTable(true)}>
+                <button type="button" className="row-menu__item" onClick={pickOption(() => setShowVersions(true))}>
+                  Lịch sử phiên bản…
+                </button>
+                <button type="button" className="row-menu__item" onClick={pickOption(() => setAskDeleteTable(true))}>
                   {isSampleTable ? "Bỏ bảng minh hoạ…" : "Xoá bảng này…"}
                 </button>
               </div>
@@ -655,6 +673,8 @@ function Sheet({ table }: { table: SheetTable }) {
           onDone={endUndo}
         />
       ) : null}
+
+      {showVersions ? <VersionHistory table={table} onClose={() => setShowVersions(false)} /> : null}
 
       {askDeleteTable ? (
         <DeleteTableDialog

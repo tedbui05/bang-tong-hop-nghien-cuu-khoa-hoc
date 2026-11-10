@@ -31,6 +31,25 @@ where n.nspname = 'public' and c.relkind in ('r', 'p')
 order by 1;
 ```
 
+## 3c. Tạo bảng lưu lịch sử phiên bản
+
+Mở thêm một tab trong **SQL Editor**, dán toàn bộ nội dung file `supabase/sql/phien-ban.sql`, bấm **Run**. Chạy lại cũng không sao.
+
+File này tạo bảng `sheet_versions` (bản chụp cả bảng cho nút "Lịch sử phiên bản", không có file PDF), bật phân quyền: mỗi người chỉ xem, thêm, xoá phiên bản của mình, không ai sửa được phiên bản đã lưu. Phiên bản tự lưu giữ tối đa 30 bản mới nhất mỗi bảng (số tạm); phiên bản tự đặt tên không tự bị xoá.
+
+Kiểm tra (chạy từng câu):
+
+```sql
+-- rls_bat phải là true
+select relname as bang, relrowsecurity as rls_bat from pg_class where relname = 'sheet_versions';
+-- đúng ba chính sách (đọc, thêm, xoá), cột qual / with_check đều có auth.uid() = owner_id
+select policyname, cmd, qual, with_check from pg_policies where tablename = 'sheet_versions' order by policyname;
+-- anon không có dòng nào; authenticated chỉ có SELECT, INSERT, DELETE (không có UPDATE)
+select grantee, privilege_type from information_schema.role_table_grants where table_name = 'sheet_versions' order by grantee, privilege_type;
+```
+
+Sau đó chạy `npm run test:phan-quyen`: có thêm các mục kiểm tra chéo cho `sheet_versions` (người khác không đọc, không xoá, không thêm đứng tên mình; không ai sửa được; tự lưu chỉ giữ 30 bản).
+
 ## 4. Lấy địa chỉ và khoá
 
 Trong **Project Settings → API Keys** (và **Data API** để lấy địa chỉ dự án):

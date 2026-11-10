@@ -55,6 +55,7 @@ export function ResetDataButton() {
             </li>
             <li>{waiting > 0 ? `${waiting} bài đang chờ xử lý hoặc chờ duyệt` : "Mọi bài đang chờ duyệt (hiện không có)"}</li>
             <li>Các file PDF đã giữ trong trình duyệt</li>
+            <li>Lịch sử phiên bản của mọi bảng</li>
           </ul>
           <p>Sau đó app chỉ còn Bảng mẫu ban đầu. Không khôi phục lại được. Nếu cần giữ bảng, hãy xuất Excel trước.</p>
         </div>

@@ -1,5 +1,5 @@
 // Kiểm tra quy tắc phân quyền (RLS) trên Supabase thật: người dùng này không đọc, không sửa được dữ liệu của người khác.
-// Chạy: npm run test:phan-quyen (cần đã chạy supabase/sql/gioi-han-goi-ai.sql và du-lieu-bang.sql).
+// Chạy: npm run test:phan-quyen (cần đã chạy supabase/sql/gioi-han-goi-ai.sql, du-lieu-bang.sql và phien-ban.sql).
 // Tạo hai người dùng ẩn danh tạm, thử mọi cách đọc, ghi chéo nhau, rồi xoá hai người dùng đó (dữ liệu xoá theo).
 // Không in khoá hay địa chỉ dự án.
 import nextEnv from "@next/env";
@@ -94,6 +94,36 @@ try {
 
   r = await admin.from("sheet_papers").select("id").eq("owner_id", a.id);
   expectTrue("Máy chủ (khoá bí mật) vẫn thấy bài của A", r.data?.length === 1, r.error?.code);
+
+  // Lịch sử phiên bản (supabase/sql/phien-ban.sql).
+  const version = { owner_id: a.id, table_id: "bang-kiem-tra", table_name: "Bảng của A", name: "Trước khi gửi thầy", kind: "tu_dat", paper_count: 1, data: { id: "bang-kiem-tra", note: "bí mật của A" } };
+  r = await a.client.from("sheet_versions").insert(version).select("id");
+  if (r.error?.code === "42P01" || r.error?.code === "PGRST205") {
+    expectTrue("Bảng sheet_versions đã có (chạy supabase/sql/phien-ban.sql)", false, r.error.code);
+  } else {
+    expectTrue("A lưu được phiên bản của mình", !r.error && r.data?.length === 1, r.error?.code);
+    const versionId = r.data?.[0]?.id;
+    r = await a.client.from("sheet_versions").select("id, data");
+    expectTrue("A đọc lại được phiên bản của mình", r.data?.length === 1, r.error?.code);
+    r = await b.client.from("sheet_versions").select("*");
+    expectTrue("B không đọc được phiên bản của A", !r.error && r.data.length === 0, r.error?.code ?? `${r.data.length} dòng`);
+    r = await b.client.from("sheet_versions").delete().eq("owner_id", a.id).select("id");
+    expectTrue("B không xoá được phiên bản của A", !r.error && r.data.length === 0, r.error?.code);
+    r = await b.client.from("sheet_versions").insert({ ...version, name: "Giả mạo" });
+    expectTrue("B không thêm được phiên bản đứng tên A", denied(r), r.error?.code);
+    r = await a.client.from("sheet_versions").update({ name: "Đổi" }).eq("id", versionId).select("id");
+    expectTrue("Không ai sửa được phiên bản đã lưu (kể cả A)", denied(r), r.error?.code);
+    r = await nobody.from("sheet_versions").select("*");
+    expectTrue("Chưa đăng nhập: không đọc được sheet_versions", Boolean(r.error) || r.data.length === 0, r.error?.code);
+    // Tự lưu: chỉ giữ 30 bản mới nhất của mỗi bảng; bản tự đặt tên vẫn còn.
+    for (let i = 0; i < 32; i++) {
+      await a.client.from("sheet_versions").insert({ ...version, name: null, kind: "tu_dong", reason: `tự lưu ${i}` });
+    }
+    r = await a.client.from("sheet_versions").select("kind, reason").eq("table_id", "bang-kiem-tra");
+    const auto = (r.data ?? []).filter((row) => row.kind === "tu_dong");
+    expectTrue("Tự lưu giữ đúng 30 bản mới nhất", auto.length === 30 && !auto.some((row) => row.reason === "tự lưu 0" || row.reason === "tự lưu 1"), `${auto.length} bản`);
+    expectTrue("Phiên bản tự đặt tên không bị tự xoá", (r.data ?? []).some((row) => row.kind === "tu_dat"), r.error?.code);
+  }
 } catch (error) {
   expectTrue("Chạy được bài kiểm tra", false, error instanceof Error ? error.message : "lỗi");
 } finally {

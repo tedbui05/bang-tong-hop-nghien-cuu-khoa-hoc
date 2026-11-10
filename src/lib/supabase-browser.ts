@@ -4,6 +4,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { PaperRow, Remote, TableRow } from "./cloud-sync";
 import type { QueueError } from "./paper-pipeline";
+import type { VersionInsert, VersionMeta, VersionRow } from "./versions";
 
 let client: SupabaseClient | null = null;
 
@@ -188,6 +189,44 @@ export const supabaseRemote: Remote = {
   async clear() {
     const { supabase, userId } = await ensureUser();
     await check(supabase.from("sheet_tables").delete().eq("owner_id", userId));
+    // Phiên bản cũng là dữ liệu của người dùng. Máy chủ chưa có bảng phiên bản thì bỏ qua.
+    const versions = await supabase.from("sheet_versions").delete().eq("owner_id", userId);
+    if (versions.error && !isMissingTable(versions.error.code)) throw new Error(`supabase ${versions.error.code ?? "loi"}`);
+  },
+};
+
+// Máy chủ chưa có bảng (chưa chạy file SQL tương ứng).
+export function isMissingTable(code: string | undefined): boolean {
+  return code === "42P01" || code === "PGRST205";
+}
+
+export class VersionsUnavailable extends Error {}
+
+const VERSION_META = "id, table_id, table_name, name, reason, kind, paper_count, created_at";
+
+async function checkVersions<T extends { error: { code?: string } | null }>(request: PromiseLike<T>): Promise<T> {
+  const result = await request;
+  if (result.error && isMissingTable(result.error.code)) throw new VersionsUnavailable("chưa có bảng sheet_versions");
+  if (result.error) throw new Error(`supabase ${result.error.code ?? "loi"}`);
+  return result;
+}
+
+// Lịch sử phiên bản (bảng sheet_versions, supabase/sql/phien-ban.sql). Phân quyền ở máy chủ: chỉ thấy phiên bản của mình.
+export const versionsRemote = {
+  async list(): Promise<VersionMeta[]> {
+    const { supabase } = await ensureUser();
+    const result = await checkVersions(supabase.from("sheet_versions").select(VERSION_META).order("created_at", { ascending: false }).limit(1000));
+    return (result.data ?? []) as VersionMeta[];
+  },
+  async load(id: string): Promise<VersionRow> {
+    const { supabase } = await ensureUser();
+    const result = await checkVersions(supabase.from("sheet_versions").select(`${VERSION_META}, data`).eq("id", id).single());
+    return result.data as VersionRow;
+  },
+  async save(row: VersionInsert): Promise<VersionMeta> {
+    const { supabase, userId } = await ensureUser();
+    const result = await checkVersions(supabase.from("sheet_versions").insert({ ...row, owner_id: userId }).select(VERSION_META).single());
+    return result.data as VersionMeta;
   },
 };
 
