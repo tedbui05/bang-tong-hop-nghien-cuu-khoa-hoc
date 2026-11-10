@@ -9,6 +9,7 @@ import type { PreviewState } from "@/lib/preview-state";
 import { useStore } from "@/lib/store";
 import { filledByText, getLabelKey } from "@/lib/types";
 import { EvidencePreviewLayer, useEvidencePreview } from "./EvidencePreview";
+import { quoteList } from "@/lib/paper-viewer";
 import { EvidenceSide } from "./EvidenceSide";
 import { InfoCard } from "./InfoCard";
 import { LeaveGuard } from "./LeaveGuard";
@@ -17,7 +18,7 @@ import { SkeletonLines, StateMessage } from "./StateMessage";
 
 export function ReviewView({ state }: { state: PreviewState }) {
   const router = useRouter();
-  const { review, startSampleReview, activeTable, queue, queueLoaded, openReview } = useStore();
+  const { review, startSampleReview, targetTable, queue, queueLoaded, openReview } = useStore();
   const firstReady = queue.find((item) => item.status === "ready")?.id ?? null;
   const processing = queue.some((item) => ["waiting", "reading", "ai", "checking"].includes(item.status));
 
@@ -93,7 +94,7 @@ export function ReviewView({ state }: { state: PreviewState }) {
               <button
                 type="button"
                 className="button button--quiet"
-                disabled={!activeTable}
+                disabled={!targetTable}
                 onClick={() => {
                   startSampleReview();
                   router.push("/duyet-bai");
@@ -319,6 +320,18 @@ function ReviewSession() {
                 setSheetOpen(false);
                 cards.current[active]?.focus({ preventScroll: true });
               }}
+              onOpenPaper={(anchor) =>
+                preview.openFull(
+                  {
+                    paper: session.paper,
+                    cell: activeCell,
+                    columnName: columnName(activeCell.column),
+                    pages: session.pages,
+                    quotes: quoteList(session.cells, columns),
+                  },
+                  anchor,
+                )
+              }
             />
           ) : null}
         </div>

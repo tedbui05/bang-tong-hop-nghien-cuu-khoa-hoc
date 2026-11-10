@@ -1193,6 +1193,11 @@ body:has(.sheet-page) .preview-bar {
   font-weight: 600;
 }
 
+.evidence-panel__open {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
 .evidence-panel__paper {
   display: -webkit-box;
   margin-top: 2px;
@@ -3209,6 +3214,62 @@ body:has(.sheet-page) .site-footer {
   margin: 8px 16px 0;
 }
 
+a.ev-pop__button {
+  text-decoration: none;
+}
+
+/* Danh sách câu trích khi xem cả bài: bấm để nhảy tới và tô câu đó */
+.pdf-full__quotes {
+  padding: 6px 16px 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.pdf-full__quotes summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.pdf-full__quotes ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 96px;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.pdf-full__quote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 2px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.pdf-full__quote:hover {
+  background: var(--soft);
+}
+
+.pdf-full__quote[aria-current="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.pdf-full__quote-page {
+  color: var(--ink-soft);
+}
+
 .pdf-full__scroll {
   /* Vị trí các trang tính theo khung này (offsetTop) */
   position: relative;
@@ -3321,4 +3382,207 @@ body:has(.sheet-page) .site-footer {
 .metrics-tile__note {
   font-size: 13px;
   color: var(--ink-soft);
+}
+
+/* Màn hình trống của người dùng mới */
+.welcome {
+  max-width: 640px;
+  margin: 24px 0;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.welcome h2 {
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.welcome p {
+  margin-top: 10px;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.welcome__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 20px;
+}
+
+/* Dải nhắc bảng minh hoạ, ngay dưới thanh tiêu đề của bảng */
+.sample-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  background: var(--warn-tint);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Tuỳ chọn bảng (xoá bảng) trên thanh tiêu đề */
+.table-options {
+  position: relative;
+}
+
+.table-options summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.table-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-options__panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+/* Menu của một dòng (chuột phải) */
+.row-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.row-menu__title {
+  overflow: hidden;
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-menu__item {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.row-menu__item:hover,
+.row-menu__item:focus-visible {
+  background: var(--soft);
+}
+
+/* Xoá: tách riêng bằng đường kẻ, không dùng màu đỏ (đỏ chỉ cho chữ báo lỗi) */
+.row-menu__item--danger {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+}
+
+/* Thanh "Đã chọn n bài" phía trên bảng */
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 6px 16px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.selection-bar__delete {
+  min-height: 32px;
+  padding: 3px 12px;
+}
+
+/* Thông báo "Đã xoá n bài" kèm Hoàn tác */
+.undo-toast {
+  position: fixed;
+  z-index: 70;
+  bottom: 40px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  background: var(--sheet-head);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  color: var(--on-sheet-head);
+  font-size: 15px;
+  transform: translateX(-50%);
+}
+
+.undo-toast__button {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--on-accent-line);
+  border-radius: 6px;
+  color: var(--on-sheet-head);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.undo-toast__button:hover {
+  background: var(--sheet-head-hover);
+}
+
+.undo-toast__close {
+  display: inline-flex;
+  padding: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--on-sheet-letter);
+  cursor: pointer;
+}
+
+.table-pick select {
+  min-height: 40px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-input);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+@media (max-width: 640px) {
+  /* Nút "Tuỳ chọn bảng" nằm sát mép trái trên điện thoại: mở danh sách sang phải để không tràn ra ngoài */
+  .table-options__panel {
+    right: auto;
+    left: 0;
+  }
+
+  .undo-toast {
+    bottom: 56px;
+  }
 }

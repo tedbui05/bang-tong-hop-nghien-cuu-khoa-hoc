@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { exportTableToExcel } from "@/lib/export-xlsx";
+import { quoteList } from "@/lib/paper-viewer";
 import { checkColumnName, countUnfilled, isInfoEdited, newContentColumn, removedInfoColumns, TITLE_COLUMN_ID } from "@/lib/columns";
 import type { PreviewState } from "@/lib/preview-state";
 import { countLabels, listLanguages, STATUS_LABELS, type StatusFilter } from "@/lib/sheet";
@@ -11,20 +12,24 @@ import { useStore, type CloudState } from "@/lib/store";
 import { isCellEdited, type LabelKey, type SheetTable } from "@/lib/types";
 import { ColumnMenu } from "./ColumnMenu";
 import { EvidencePanel } from "./EvidencePanel";
-import { chipBlur, chipKey, EvidencePreviewLayer, useEvidencePreview, type EvidenceTarget } from "./EvidencePreview";
+import { chipBlur, chipKey, EvidencePreviewLayer, paperTarget, useEvidencePreview, type EvidenceTarget } from "./EvidencePreview";
 import { FormatBar, useCellFormatting } from "./FormatBar";
 import { StatusIcon } from "./StatusBadge";
 import { SheetGrid, type SheetSelection, type SheetSort } from "./SheetGrid";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 import { useScrollHint } from "./useScrollHint";
 import { ResetDataButton } from "./ResetDataButton";
+import { DeleteTableDialog, RowMenu, SelectionBar, UndoToast } from "./TableActions";
+import { SAMPLE_TABLE_ID, type RemovedPapers } from "@/lib/table-ops";
 
 const STATUS_ORDER: LabelKey[] = ["needs_review", "verified", "page_corrected", "not_found", "manual"];
 const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3];
 
 export function TableView({ state }: { state: PreviewState }) {
-  const { activeTable, hydrated } = useStore();
+  const { activeTable, hydrated, demoOpen, openDemo, closeDemo } = useStore();
   const table = state === "trong" ? null : activeTable;
+  // Bảng minh hoạ chỉ sống trong trang này: rời trang là đóng.
+  useEffect(() => closeDemo, [closeDemo]);
 
   if (!hydrated && state === "binh-thuong") {
     return (
@@ -41,7 +46,7 @@ export function TableView({ state }: { state: PreviewState }) {
     return (
       <main id="noi-dung" className="sheet-page">
         {/* Mỗi bảng có bộ lọc và vùng chọn riêng nên đổi bảng là dựng lại từ đầu. */}
-        <Sheet key={table.id} table={table} />
+        <Sheet key={demoOpen ? `minh-hoa-${table.id}` : table.id} table={table} />
       </main>
     );
   }
@@ -50,9 +55,11 @@ export function TableView({ state }: { state: PreviewState }) {
     <main id="noi-dung" className="page page--wide">
       <div className="page-heading">
         <h1>Bảng tổng hợp</h1>
-        <Link className="button button--primary" href="/tao-bang">
-          Tạo bảng mới
-        </Link>
+        {table ? (
+          <Link className="button button--primary" href="/tao-bang">
+            Tạo bảng mới
+          </Link>
+        ) : null}
       </div>
 
       {state === "dang-tai" ? (
@@ -76,9 +83,21 @@ export function TableView({ state }: { state: PreviewState }) {
       ) : null}
 
       {state === "trong" || (state === "binh-thuong" && !table) ? (
-        <StateMessage tone="empty" title="Chưa có bảng nào">
-          <p>Tạo một bảng, thiết lập các cột cần điền, rồi mới thêm bài báo.</p>
-        </StateMessage>
+        <section className="welcome" aria-labelledby="chao-mung">
+          <h2 id="chao-mung">Lập bảng tổng quan tài liệu, có câu trích để kiểm chứng</h2>
+          <p>
+            Bạn đặt ra các cột cần điền, tải bài báo PDF lên. AI đề xuất nội dung từng ô kèm câu trích nguyên văn và số trang;
+            app tự kiểm tra câu trích có thật trong bài; bạn duyệt từng ô rồi mới lưu vào bảng, và xuất được ra Excel.
+          </p>
+          <div className="welcome__actions">
+            <Link className="button button--primary" href="/tao-bang">
+              Tạo bảng đầu tiên
+            </Link>
+            <button type="button" className="link-button" onClick={openDemo}>
+              Xem bảng minh hoạ
+            </button>
+          </div>
+        </section>
       ) : null}
 
       <p className="fine-print">Dữ liệu được lưu trên trình duyệt này. Hãy xuất Excel để giữ bản sao.</p>
@@ -108,7 +127,27 @@ const STAT_TILES: { key: LabelKey; label: string }[] = [
 
 function Sheet({ table }: { table: SheetTable }) {
   const router = useRouter();
-  const { tables, setActiveTable, savedTitle, saveFailed, cloud, syncNow, editSavedCell, addColumn, changeColumn, deleteColumn, moveColumn, reorderColumns } = useStore();
+  const {
+    tables,
+    setActiveTable,
+    savedTitle,
+    saveFailed,
+    cloud,
+    syncNow,
+    editSavedCell,
+    addColumn,
+    changeColumn,
+    deleteColumn,
+    moveColumn,
+    reorderColumns,
+    demoOpen,
+    closeDemo,
+    deletePapers,
+    undoDeletePapers,
+    deleteTable,
+    queue,
+  } = useStore();
+  const isSampleTable = !demoOpen && table.id === SAMPLE_TABLE_ID;
   const { papers, columns } = table;
   // Điện thoại: hai hàng này cuộn ngang, có vệt mờ ở mép phải khi còn nội dung.
   const statsRow = useRef<HTMLDivElement | null>(null);
@@ -131,11 +170,51 @@ function Sheet({ table }: { table: SheetTable }) {
   const [savedNoticeClosed, setSavedNoticeClosed] = useState(false);
   const [tagFilter, setTagFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  // Bài đánh dấu bằng ô chọn ở đầu dòng; menu của dòng; thông báo hoàn tác; hộp hỏi xoá bảng.
+  const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const [rowMenu, setRowMenu] = useState<{ paperId: string; x: number; y: number } | null>(null);
+  const [undo, setUndo] = useState<{ message: string; removed: RemovedPapers } | null>(null);
+  const [askDeleteTable, setAskDeleteTable] = useState(false);
   // Khung xem trước trang PDF khi rê chuột, Tab hoặc bấm vào nhãn bằng chứng trong ô.
   const preview = useEvidencePreview();
   const tags = table.tags ?? [];
   const targets = selected?.cells ?? [];
   const formatting = useCellFormatting(targets, papers);
+
+  // Chỉ tính các bài còn trong bảng (bài vừa xoá thì không còn được chọn; hoàn tác thì chọn lại như cũ).
+  const selectedIds = useMemo(() => {
+    const ids = new Set(papers.map((paper) => paper.id));
+    const kept = [...checked].filter((id) => ids.has(id));
+    return kept.length === checked.size ? checked : new Set(kept);
+  }, [checked, papers]);
+
+  const toggleCheck = useCallback((paperId: string) => {
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(paperId)) next.delete(paperId);
+      else next.add(paperId);
+      return next;
+    });
+  }, []);
+
+  // Xoá bài không hỏi lại: có thông báo "Hoàn tác" trong vài giây.
+  function removeRows(ids: string[]) {
+    const removed = deletePapers(ids);
+    if (!removed) return;
+    if (selected && ids.includes(selected.paperId)) setSelected(null);
+    preview.close();
+    setUndo({ message: `Đã xoá ${removed.items.length} bài`, removed });
+  }
+
+  // Mở cả file PDF của bài, ở trang 1, có danh sách câu trích để bấm nhảy tới.
+  function openPaper(paperId: string, anchor: HTMLElement) {
+    const paper = papers.find((item) => item.id === paperId);
+    if (paper) preview.openFull(paperTarget(paper, quoteList(paper.cells, columns)), anchor);
+  }
+
+  const closeRowMenu = useCallback(() => setRowMenu(null), []);
+  const endUndo = useCallback(() => setUndo(null), []);
+  const waitingInTable = queue.filter((item) => item.tableId === table.id && item.status !== "saved").length;
 
   const counts = useMemo(() => countLabels(papers), [papers]);
   const languages = useMemo(() => listLanguages(papers), [papers]);
@@ -162,6 +241,7 @@ function Sheet({ table }: { table: SheetTable }) {
           column: selectedColumn,
           cell: selectedPaper.cells.find((cell) => cell.column === selectedColumn.id),
           count: selected.count,
+          quotes: quoteList(selectedPaper.cells, columns),
         }
       : null;
 
@@ -211,7 +291,7 @@ function Sheet({ table }: { table: SheetTable }) {
           <p>{table.description || `${papers.length} bài, ${columns.length} cột`}</p>
         </div>
         <div className="sheet-titlebar__actions">
-          {tables.length > 1 ? (
+          {!demoOpen && tables.length > 1 ? (
             <label className="sheet-titlebar__switch">
               <span>Đổi bảng</span>
               <select value={table.id} onChange={(event) => setActiveTable(event.target.value)}>
@@ -223,6 +303,16 @@ function Sheet({ table }: { table: SheetTable }) {
               </select>
             </label>
           ) : null}
+          {demoOpen ? null : (
+            <details className="table-options">
+              <summary className="button sheet-titlebar__ghost">Tuỳ chọn bảng</summary>
+              <div className="table-options__panel">
+                <button type="button" className="row-menu__item" onClick={() => setAskDeleteTable(true)}>
+                  {isSampleTable ? "Bỏ bảng minh hoạ…" : "Xoá bảng này…"}
+                </button>
+              </div>
+            </details>
+          )}
           <Link className="button sheet-titlebar__ghost" href="/tao-bang">
             Tạo bảng mới
           </Link>
@@ -231,6 +321,24 @@ function Sheet({ table }: { table: SheetTable }) {
           </Link>
         </div>
       </header>
+
+      {demoOpen ? (
+        <div className="sample-banner" role="note">
+          <p>
+            <strong>Bảng minh hoạ:</strong> dữ liệu mẫu, nhãn gán tay. Bạn có thể thử sửa, tô màu, xem PDF, nhưng thay đổi không được lưu.
+          </p>
+          <button type="button" className="button button--secondary" onClick={closeDemo}>
+            Đóng bảng minh hoạ
+          </button>
+        </div>
+      ) : isSampleTable ? (
+        <div className="sample-banner" role="note">
+          <p>Đây là bảng minh hoạ có sẵn trong app: dữ liệu mẫu, nhãn gán tay, chưa phải kết quả kiểm tra thật.</p>
+          <button type="button" className="button button--secondary" onClick={() => setAskDeleteTable(true)}>
+            Bỏ bảng minh hoạ
+          </button>
+        </div>
+      ) : null}
 
       <div ref={statsRow} className="sheet-stats" role="group" aria-label="Tổng quan, bấm để lọc">
         <button type="button" className="sheet-stat" aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
@@ -427,6 +535,17 @@ function Sheet({ table }: { table: SheetTable }) {
         }}
       >
         <div className="sheet-workspace__grid">
+      {selectedIds.size > 0 ? (
+        <SelectionBar
+          count={selectedIds.size}
+          onClear={() => setChecked(new Set())}
+          onDelete={() => {
+            const ids = [...selectedIds];
+            setChecked(new Set());
+            removeRows(ids);
+          }}
+        />
+      ) : null}
       <SheetGrid
         papers={papers}
         columns={columns}
@@ -446,12 +565,16 @@ function Sheet({ table }: { table: SheetTable }) {
         onVisibleCount={setVisibleCount}
         onEdit={editSavedCell}
         onAddPaper={() => router.push("/them-bai")}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleCheck}
+        onOpenPaper={openPaper}
+        onRowMenu={(paperId, x, y) => setRowMenu({ paperId, x, y })}
         onEvidence={(action, paperId, columnId, anchor, event) => {
           const paper = papers.find((item) => item.id === paperId);
           const cell = paper?.cells.find((item) => item.column === columnId);
           const column = columns.find((item) => item.id === columnId);
           if (!paper || !cell || !column) return;
-          const target: EvidenceTarget = { paper, cell, columnName: column.name };
+          const target: EvidenceTarget = { paper, cell, columnName: column.name, quotes: quoteList(paper.cells, columns) };
           if (action === "enter") preview.hoverIn(target, anchor);
           else if (action === "leave") preview.hoverOut();
           else if (action === "focus") preview.focusIn(target, anchor);
@@ -478,6 +601,34 @@ function Sheet({ table }: { table: SheetTable }) {
       </div>
 
       <EvidencePreviewLayer preview={preview} />
+
+      {rowMenu ? (
+        <RowMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          title={papers.find((paper) => paper.id === rowMenu.paperId)?.info.title ?? ""}
+          selected={selectedIds.has(rowMenu.paperId)}
+          onOpenPaper={() => {
+            const button = document.querySelector<HTMLElement>(`.sheet-open-pdf[data-paper="${CSS.escape(rowMenu.paperId)}"]`);
+            openPaper(rowMenu.paperId, button ?? document.body);
+          }}
+          onToggleSelect={() => toggleCheck(rowMenu.paperId)}
+          onDelete={() => removeRows([rowMenu.paperId])}
+          onClose={closeRowMenu}
+        />
+      ) : null}
+
+      {undo ? <UndoToast key={undo.message + undo.removed.items[0]?.paper.id} message={undo.message} onUndo={() => undoDeletePapers(undo.removed)} onDone={endUndo} /> : null}
+
+      {askDeleteTable ? (
+        <DeleteTableDialog
+          table={table}
+          waiting={waitingInTable}
+          sample={isSampleTable}
+          onConfirm={() => deleteTable(table.id)}
+          onClose={() => setAskDeleteTable(false)}
+        />
+      ) : null}
 
       <footer className="sheet-footer">
         <span>

@@ -513,3 +513,47 @@
 .sheet-tags .sheet-tag {
   font-size: calc(12px * var(--sheet-zoom));
 }
+
+/* Ô Tên bài: ô chọn (xoá nhiều bài), nút mở bài gốc, rồi tên bài */
+.sheet-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sheet-title-cell .sheet-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.sheet-row-check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sheet-open-pdf {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--sheet-muted);
+  cursor: pointer;
+}
+
+.sheet-open-pdf:hover,
+.sheet-open-pdf:focus-visible {
+  background: var(--sheet-hover);
+  border-color: var(--line-input);
+  color: var(--ink);
+}

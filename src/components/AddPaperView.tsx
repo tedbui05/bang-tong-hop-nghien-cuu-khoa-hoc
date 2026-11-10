@@ -10,6 +10,7 @@ import { MAX_PDF_BYTES, formatMegabytes } from "@/lib/pdf-read";
 import type { PreviewState } from "@/lib/preview-state";
 import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type QueueItem } from "@/lib/store";
+import { SAMPLE_TABLE_ID } from "@/lib/table-ops";
 import { getLabelKey, type LabelKey } from "@/lib/types";
 import { SkeletonLines, StateMessage } from "./StateMessage";
 import { StatusIcon } from "./StatusBadge";
@@ -45,8 +46,10 @@ async function filesFromDrop(items: DataTransferItemList): Promise<File[]> {
 }
 
 function AddPaperContent({ state }: { state: PreviewState }) {
-  const { activeTable, hydrated, queue, addFiles } = useStore();
-  const table = state === "trong" ? null : activeTable;
+  // Bài mới chỉ vào bảng riêng của người dùng, không bao giờ vào Bảng mẫu hay bảng minh hoạ.
+  const { targetTable, tables, setActiveTable, hydrated, queue, addFiles } = useStore();
+  const table = state === "trong" ? null : targetTable;
+  const ownTables = tables.filter((item) => item.id !== SAMPLE_TABLE_ID);
   const [dragging, setDragging] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "missing" | "offline">("idle");
@@ -122,6 +125,31 @@ function AddPaperContent({ state }: { state: PreviewState }) {
           }
         >
           <p>File có thể bị hỏng hoặc là bản scan. Hãy thử file PDF bôi đen được chữ.</p>
+        </StateMessage>
+      ) : !table && ownTables.length > 0 ? (
+        <StateMessage
+          tone="empty"
+          title="Hãy chọn bảng để thêm bài"
+          action={
+            <Link className="button button--secondary" href="/tao-bang">
+              Tạo bảng mới
+            </Link>
+          }
+        >
+          <p>Bảng đang mở là bảng minh hoạ, không nhận bài mới. Hãy chọn một bảng của bạn:</p>
+          <label className="table-pick">
+            <span className="visually-hidden">Bảng sẽ nhận bài</span>
+            <select defaultValue="" onChange={(event) => event.target.value && setActiveTable(event.target.value)}>
+              <option value="" disabled>
+                Chọn bảng…
+              </option>
+              {ownTables.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </StateMessage>
       ) : !table ? (
         <StateMessage

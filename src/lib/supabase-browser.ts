@@ -49,14 +49,30 @@ export async function getAccessToken(): Promise<TokenResult> {
   try {
     const { data } = await supabase.auth.getSession();
     if (data.session?.access_token) return { ok: true, token: data.session.access_token };
-    const { data: signedIn, error } = await supabase.auth.signInAnonymously();
-    if (error || !signedIn.session?.access_token) throw error ?? new Error("không có phiên");
-    return { ok: true, token: signedIn.session.access_token };
+    return { ok: true, token: await signInOnce(supabase) };
   } catch (error) {
     // Ghi lỗi gốc (tên, mã, nội dung; không có khoá) để lần sau tìm được nguyên nhân thật.
     console.error("[đăng nhập] Đăng nhập ẩn danh thất bại:", describeAuthError(error));
     return { ok: false, error: signInError(error, typeof navigator !== "undefined" && navigator.onLine === false) };
   }
+}
+
+// Người dùng mới: tạo bảng (bắt đầu lưu lên máy chủ) và tải bài (gọi AI) gần như cùng lúc, cả hai cùng cần đăng nhập.
+// Hai lần đăng nhập ẩn danh song song tạo ra hai danh tính khác nhau: dữ liệu ghi dưới danh tính đầu, trình duyệt
+// lại giữ danh tính sau, mở lại app thì mất bài (gặp ngày 10/11/2026). Các lần gọi cùng lúc dùng chung một lần đăng nhập.
+let signingIn: Promise<string> | null = null;
+
+export function signInOnce(supabase: Pick<SupabaseClient, "auth">): Promise<string> {
+  signingIn ??= (async () => {
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error || !data.session?.access_token) throw error ?? new Error("không có phiên");
+      return data.session.access_token;
+    } finally {
+      signingIn = null;
+    }
+  })();
+  return signingIn;
 }
 
 type AuthErrorLike = { name?: unknown; status?: unknown; code?: unknown; message?: unknown };

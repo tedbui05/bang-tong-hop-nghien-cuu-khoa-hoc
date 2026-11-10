@@ -35,6 +35,13 @@ type Props = {
   onVisibleCount: (count: number) => void;
   onEdit: (paperId: string, column: TableColumn, value: string) => void;
   onAddPaper: () => void;
+  // Các bài đang được đánh dấu bằng ô chọn ở đầu dòng (để xoá nhiều bài).
+  selectedIds: Set<string>;
+  onToggleSelect: (paperId: string) => void;
+  // Biểu tượng tài liệu cạnh tên bài: mở cả file PDF gốc.
+  onOpenPaper: (paperId: string, anchor: HTMLElement) => void;
+  // Chuột phải vào dòng, hoặc phím ContextMenu / Shift+F10 trên ô đang chọn: mở menu của dòng.
+  onRowMenu: (paperId: string, x: number, y: number) => void;
   // Nhãn bằng chứng trong ô: rê chuột, rời chuột, Tab tới, rời đi, phím, bấm hoặc chạm.
   onEvidence?: (
     action: "enter" | "leave" | "focus" | "blur" | "key" | "click",
@@ -184,6 +191,13 @@ export function SheetGrid(props: Props) {
           latest.current.onColumnResized(column.getField(), column.getWidth());
         });
 
+        // Chuột phải vào dòng: menu của dòng (mở bài gốc, chọn, xoá) thay cho menu của trình duyệt.
+        built.on("rowContext", (event: UIEvent, row: RowComponent) => {
+          const mouse = event as MouseEvent;
+          mouse.preventDefault();
+          latest.current.onRowMenu(String(row.getIndex()), mouse.clientX, mouse.clientY);
+        });
+
         built.on("cellEdited", (cell: CellComponent) => {
           const column = latest.current.columns.find((item) => item.id === cell.getField());
           if (column) latest.current.onEdit(String(cell.getRow().getIndex()), column, String(cell.getValue()));
@@ -226,6 +240,13 @@ export function SheetGrid(props: Props) {
     };
     // Chỉ dựng một lần; dữ liệu mới đi qua latest và các effect bên dưới.
   }, []);
+
+  // Ô chọn ở đầu dòng: chỉ đổi dấu tích, không vẽ lại bảng.
+  useEffect(() => {
+    host.current?.querySelectorAll<HTMLInputElement>(".sheet-row-check").forEach((box) => {
+      box.checked = props.selectedIds.has(box.dataset.paper ?? "");
+    });
+  }, [props.selectedIds]);
 
   // Bài nào đổi nội dung hay định dạng thì chỉ vẽ lại dòng đó, không mất vùng đang chọn.
   useEffect(() => {
@@ -388,6 +409,15 @@ export function SheetGrid(props: Props) {
       props.onSelection(null);
       return;
     }
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      const table = tableRef.current as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] } | null;
+      const cell = table?.getRanges()[0]?.getCells().flat().find((item) => item.getField());
+      if (!cell) return;
+      event.preventDefault();
+      const box = cell.getElement().getBoundingClientRect();
+      props.onRowMenu(String(cell.getRow().getIndex()), box.left + 8, box.bottom);
+      return;
+    }
     if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
     // Enter trên ô đang chọn là mở phần sửa, giống bấm đúp.
     const table = tableRef.current as unknown as { getRanges: () => { getCells: () => CellComponent[][] }[] } | null;
@@ -417,8 +447,14 @@ export function SheetGrid(props: Props) {
         className={`sheet-host${wrap ? " sheet-host--wrap" : ""}${props.hasSelection ? "" : " sheet-host--idle"}`}
         style={{ ["--sheet-zoom" as string]: zoom }}
         onMouseDownCapture={(event) => {
-          // Bấm vào nhãn bằng chứng chỉ mở khung xem trước: không tính là chọn ô hay kéo chọn vùng.
-          if ((event.target as HTMLElement).closest(".ev-chip")) return;
+          // Chuột phải chỉ mở menu của dòng, không chọn ô: chọn ô làm khung chi tiết mở ra, bảng dịch chỗ,
+          // và menu chuột phải rơi vào khung chi tiết thay vì vào dòng. Chặn ở đây để thư viện không nhận cú nhấn này.
+          if (event.button === 2 && (event.target as HTMLElement).closest(".tabulator-tableholder")) {
+            event.stopPropagation();
+            return;
+          }
+          // Bấm vào nhãn bằng chứng, ô chọn ở đầu dòng hay nút mở bài gốc: không tính là chọn ô hay kéo chọn vùng.
+          if ((event.target as HTMLElement).closest(".ev-chip, .sheet-row-check, .sheet-open-pdf")) return;
           interacted.current = true;
           const pressed = cellKey(event.target as HTMLElement);
           const before = lastPress.current;
@@ -607,15 +643,53 @@ function headerTitle(column: TableColumn, latest: RefObject<Props>): HTMLElement
   return wrapper;
 }
 
+// Ô Tên bài: ô chọn (để xoá nhiều bài), nút mở bài gốc, rồi tên bài. Hai nút không nhận Tab (hàng trăm dòng);
+// người dùng bàn phím dùng menu của dòng (phím ContextMenu hoặc Shift+F10) để chọn, mở hay xoá bài.
 function formatTitle(cell: CellComponent, latest: RefObject<Props>) {
-  const { papers, query } = latest.current;
-  const paper = findPaper(String(cell.getRow().getIndex()), papers);
+  const { papers, query, selectedIds } = latest.current;
+  const paperId = String(cell.getRow().getIndex());
+  const paper = findPaper(paperId, papers);
   const title = span("source-text sheet-title");
   if (!paper) return title;
   title.lang = paper.language_code;
   title.translate = false;
   textNodes(title, paper.info.title, query);
-  return title;
+
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.className = "sheet-row-check";
+  check.tabIndex = -1;
+  check.dataset.paper = paperId;
+  check.checked = selectedIds.has(paperId);
+  check.setAttribute("aria-label", `Chọn bài: ${paper.info.title}`);
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "sheet-open-pdf";
+  open.tabIndex = -1;
+  open.dataset.paper = paperId;
+  open.title = "Mở bài gốc";
+  open.setAttribute("aria-label", `Mở bài gốc: ${paper.info.title}`);
+  open.setAttribute("aria-haspopup", "dialog");
+  open.innerHTML =
+    '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 1.75h5.5L13 5.25v9H4z"/><path d="M9.5 1.75v3.5H13M6.25 8.5h4.5M6.25 11h4.5"/></svg>';
+
+  // Bấm vào hai nút không chọn ô, không kéo chọn vùng, không mở ô sửa.
+  for (const element of [check, open]) {
+    for (const name of ["mousedown", "touchstart", "dblclick"]) element.addEventListener(name, (event) => event.stopPropagation());
+  }
+  check.addEventListener("click", (event) => {
+    event.stopPropagation();
+    latest.current.onToggleSelect(paperId);
+  });
+  open.addEventListener("click", (event) => {
+    event.stopPropagation();
+    latest.current.onOpenPaper(paperId, open);
+  });
+
+  const box = span("sheet-title-cell");
+  box.append(check, open, title);
+  return box;
 }
 
 // Định dạng do sinh viên tự làm. Ô đã tô màu thì bỏ nền trạng thái, trạng thái chỉ còn biểu tượng ở góc.

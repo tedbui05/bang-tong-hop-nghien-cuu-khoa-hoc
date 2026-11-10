@@ -7,6 +7,7 @@ import { chooseStart, fromRows, isEmptyPlan, planSync, snapshotOf, type Snapshot
 import { logEvent, scheduleFlush, setEventSender } from "./events";
 import { isAppSamplePaper } from "./app-sample";
 import { reviewCells, reviewPaper, sampleTable, toReviewCells } from "./sample-data";
+import { isSamplePaper, nextActiveAfterDelete, removePapers, restorePapers, SAMPLE_TABLE_ID, startingTables, type RemovedPapers } from "./table-ops";
 import type { FillKey, TagColorKey } from "./palette";
 import { clearPaperFiles, deletePaperFiles, deletePending, fileHash, loadAllPending, loadPages, savePages, savePdf, savePending } from "./paper-files";
 import { canQuickApprove, pruneToColumns, type QueueError, type ReviewSession } from "./paper-pipeline";
@@ -21,7 +22,11 @@ import { getLabelKey, type CellFormat, type Highlight, type Paper, type PaperInf
 const STORAGE_KEY = "tcb-bang-v1";
 // Có thay đổi trên trình duyệt chưa lưu lên máy chủ (ví dụ lúc mất mạng). Mở lại app thì gửi bản trình duyệt lên trước.
 const DIRTY_KEY = "tcb-bang-chua-luu-may-chu";
-const PRISTINE = JSON.stringify([sampleTable]);
+// Người dùng mới bắt đầu từ bảng trống (không còn tự tạo Bảng mẫu, người dùng chọn ngày 10/11/2026).
+const PRISTINE = "[]";
+// Thông báo "Hoàn tác" hiện 8 giây. File PDF của bài vừa xoá được giữ lâu hơn một chút rồi mới xoá khỏi IndexedDB.
+export const UNDO_SECONDS = 8;
+const UNDO_FILE_GRACE_MS = (UNDO_SECONDS + 7) * 1000;
 
 // Trạng thái lưu lên máy chủ (Supabase). local: chưa cài Supabase hoặc chưa có dữ liệu riêng nên chỉ giữ trên trình duyệt.
 export type CloudState = "local" | "loading" | "saving" | "saved" | "offline" | "error";
@@ -91,8 +96,20 @@ type ColumnChange = Partial<Pick<TableColumn, "name" | "description" | "visible"
 
 type Store = {
   tables: SheetTable[];
+  // Bảng đang hiện: bảng minh hoạ nếu đang mở, không thì bảng riêng đang chọn.
   activeTable: SheetTable | null;
+  // Bảng nhận bài mới: bảng riêng đang chọn, không bao giờ là Bảng mẫu hay bảng minh hoạ.
+  targetTable: SheetTable | null;
   setActiveTable: (id: string) => void;
+  // Bảng minh hoạ: chỉ mở khi người dùng bấm "Xem bảng minh hoạ". Thử được nhưng không lưu, không ghi thao tác.
+  demoOpen: boolean;
+  openDemo: () => void;
+  closeDemo: () => void;
+  // Xoá bài khỏi bảng đang hiện. Trả về phần đã xoá để hoàn tác.
+  deletePapers: (paperIds: string[]) => RemovedPapers | null;
+  undoDeletePapers: (removed: RemovedPapers) => void;
+  // Xoá cả một bảng riêng, kể cả bài chờ duyệt của bảng đó.
+  deleteTable: (tableId: string) => void;
   createTable: (name: string, description: string, columns: TableColumn[]) => void;
   // Các thao tác với cột luôn áp dụng cho bảng đang mở.
   addColumn: (column: TableColumn) => void;
@@ -208,8 +225,11 @@ function sortCells(cells: ReviewCell[], columns: TableColumn[]): ReviewCell[] {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [tables, setTables] = useState<SheetTable[]>([sampleTable]);
-  const [activeId, setActiveId] = useState<string | null>(sampleTable.id);
+  const [tables, setTables] = useState<SheetTable[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [demo, setDemo] = useState<SheetTable | null>(null);
+  // File của bài vừa xoá: chờ hết thời gian hoàn tác mới xoá khỏi IndexedDB.
+  const fileTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [queueLoaded, setQueueLoaded] = useState(false);
@@ -234,15 +254,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     tablesRef.current = tables;
   }, [tables]);
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   // Máy chủ không có dữ liệu trình duyệt nên chỉ đọc được sau khi trang đã hiện.
   useEffect(() => {
     const saved = readSaved();
     // Phải đọc sau khi hiện trang để khớp với máy chủ.
     if (saved) {
-      setTables(saved.tables);
-      setActiveId(saved.activeId);
-      loadedJson.current = JSON.stringify(saved.tables);
+      // Chỉ có Bảng mẫu y nguyên (bản cũ tự lưu cho mọi người): coi như người dùng mới.
+      const start = startingTables(saved.tables);
+      setTables(start);
+      setActiveId(start.some((table) => table.id === saved.activeId) ? saved.activeId : (start[0]?.id ?? null));
+      loadedJson.current = JSON.stringify(start);
     }
     setHydrated(true);
   }, []);
@@ -291,10 +317,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCloud("loading");
     try {
       const remote = await supabaseRemote.load();
-      const remoteTables = fromRows(remote.tables, remote.papers);
+      const serverTables = fromRows(remote.tables, remote.papers);
+      // Bản máy chủ chỉ có Bảng mẫu y nguyên: coi như trống. Ảnh chụp vẫn là bản máy chủ thật,
+      // nên lần đồng bộ sau sẽ xoá dòng Bảng mẫu đó trên máy chủ.
+      const remoteTables = startingTables(serverTables);
       const localHasData = JSON.stringify(tablesRef.current) !== PRISTINE;
       const choice = chooseStart(remoteTables.length > 0, localHasData, readDirty());
-      snapshot.current = snapshotOf(remoteTables);
+      snapshot.current = snapshotOf(serverTables);
       if (choice === "use_remote") {
         tablesRef.current = remoteTables;
         setTables(remoteTables);
@@ -391,13 +420,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void clearPaperFiles().finally(() => window.location.reload());
   }, []);
 
-  const activeTable = useMemo(() => tables.find((table) => table.id === activeId) ?? null, [tables, activeId]);
+  const ownTable = useMemo(() => tables.find((table) => table.id === activeId) ?? null, [tables, activeId]);
+  const activeTable = demo ?? ownTable;
+  const targetTable = ownTable && ownTable.id !== SAMPLE_TABLE_ID ? ownTable : null;
+  // Bài chờ duyệt thuộc bảng nào thì đổi theo cột của bảng đó. Đang xem bảng minh hoạ thì không đụng bài nào.
+  const sessionTableId = demo ? null : activeId;
 
+  // Đang xem bảng minh hoạ: sửa trong bộ nhớ, không vào danh sách bảng nên không lưu, không đồng bộ.
   const updateActive = useCallback(
     (change: (table: SheetTable) => SheetTable) => {
+      if (demo) {
+        setDemo((current) => (current ? change(current) : current));
+        return;
+      }
       setTables((current) => current.map((table) => (table.id === activeId ? change(table) : table)));
     },
-    [activeId],
+    [activeId, demo],
   );
 
   // Đổi mọi bài chờ duyệt (ví dụ khi xoá hoặc đổi thứ tự cột).
@@ -407,14 +445,83 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setActiveTable = useCallback((id: string) => {
     setSavedTitle(null);
+    setDemo(null);
     setActiveId(id);
   }, []);
+
+  const openDemo = useCallback(() => {
+    setSavedTitle(null);
+    setDemo(structuredClone(sampleTable));
+  }, []);
+  const closeDemo = useCallback(() => setDemo(null), []);
 
   const createTable = useCallback<Store["createTable"]>((name, description, columns) => {
     const id = `bang-${crypto.randomUUID()}`;
     setTables((current) => [...current, { id, name, description, columns, papers: [] }]);
     setSavedTitle(null);
+    setDemo(null);
     setActiveId(id);
+  }, []);
+
+  // Xoá bài không ghi thao tác (không tính vào số liệu đo hiệu quả). File PDF chờ hết thời gian hoàn tác mới xoá.
+  const deletePapers = useCallback<Store["deletePapers"]>(
+    (paperIds) => {
+      const table = activeTable;
+      if (!table || !paperIds.length) return null;
+      const { removed } = removePapers(table, paperIds);
+      if (!removed.items.length) return null;
+      updateActive((current) => removePapers(current, paperIds).table);
+      if (!demo) {
+        for (const { paper } of removed.items) {
+          const timer = setTimeout(() => {
+            fileTimers.current.delete(paper.id);
+            void deletePaperFiles(paper.id);
+          }, UNDO_FILE_GRACE_MS);
+          fileTimers.current.set(paper.id, timer);
+        }
+      }
+      return removed;
+    },
+    [activeTable, updateActive, demo],
+  );
+
+  const undoDeletePapers = useCallback<Store["undoDeletePapers"]>(
+    (removed) => {
+      for (const { paper } of removed.items) {
+        const timer = fileTimers.current.get(paper.id);
+        if (timer) clearTimeout(timer);
+        fileTimers.current.delete(paper.id);
+      }
+      if (demo && demo.id === removed.tableId) {
+        setDemo((current) => (current ? restorePapers(current, removed) : current));
+        return;
+      }
+      setTables((current) => current.map((table) => restorePapers(table, removed)));
+    },
+    [demo],
+  );
+
+  // Xoá cả bảng (đã hỏi lại ở giao diện): bài, bài chờ duyệt của bảng đó và file của chúng. Không ghi thao tác.
+  const deleteTable = useCallback<Store["deleteTable"]>((tableId) => {
+    const table = tablesRef.current.find((item) => item.id === tableId);
+    if (!table) return;
+    const next = nextActiveAfterDelete(tablesRef.current, tableId);
+    setTables((current) => current.filter((item) => item.id !== tableId));
+    setActiveId((current) => (current === tableId ? next : current));
+    setSavedTitle(null);
+    for (const paper of table.papers) void deletePaperFiles(paper.id);
+    setQueue((current) => {
+      for (const item of current) {
+        if (item.tableId !== tableId) continue;
+        files.current.delete(item.id);
+        if (item.status !== "saved") {
+          void deletePaperFiles(item.id);
+          void deletePending(item.id);
+        }
+      }
+      return current.filter((item) => item.tableId !== tableId);
+    });
+    setOpenId((current) => (current && queueRef.current.find((item) => item.id === current)?.tableId === tableId ? null : current));
   }, []);
 
   const addColumn = useCallback<Store["addColumn"]>(
@@ -443,7 +550,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         papers: table.papers.map((paper) => withoutColumn(paper, column)),
       }));
       mapSessions((current) =>
-        current.tableId !== activeId
+        current.tableId !== sessionTableId
           ? current
           : {
               ...current,
@@ -452,15 +559,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             },
       );
     },
-    [activeId, activeTable, updateActive, mapSessions],
+    [activeId, activeTable, updateActive, mapSessions, sessionTableId],
   );
 
   const applyOrder = useCallback(
     (columns: TableColumn[]) => {
       updateActive((table) => ({ ...table, columns }));
-      mapSessions((current) => (current.tableId === activeId ? { ...current, cells: sortCells(current.cells, columns) } : current));
+      mapSessions((current) => (current.tableId === sessionTableId ? { ...current, cells: sortCells(current.cells, columns) } : current));
     },
-    [activeId, updateActive, mapSessions],
+    [sessionTableId, updateActive, mapSessions],
   );
 
   const moveColumn = useCallback<Store["moveColumn"]>(
@@ -486,13 +593,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const fromAi = column.infoKey
         ? Boolean(paper?.suggested_info[column.infoKey])
         : column.kind === "content" && (cell?.status === "proposed" || cell?.status === "not_found");
-      if (fromAi && !isAppSamplePaper(paper?.file?.name)) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
+      // Bảng minh hoạ, bài có sẵn của Bảng mẫu và bài mẫu do app tạo không tính vào số liệu.
+      const counted = !demo && !isSamplePaper(paperId) && !isAppSamplePaper(paper?.file?.name);
+      if (fromAi && counted) logEvent("o_bi_sua", { cot: column.id, bai: paperId, noi: "bang" });
       updateActive((table) => ({
         ...table,
         papers: table.papers.map((paper) => (paper.id === paperId ? editCell(paper, column, value) : paper)),
       }));
     },
-    [activeTable, updateActive],
+    [activeTable, updateActive, demo],
   );
 
   const updatePapers = useCallback(
@@ -629,7 +738,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addFiles = useCallback<Store["addFiles"]>(
     (list) => {
-      if (!activeTable || !hydrated) return list.map((file) => file.name);
+      if (!targetTable || !hydrated) return list.map((file) => file.name);
       const skipped: string[] = [];
       const added: QueueItem[] = [];
       for (const file of list) {
@@ -640,7 +749,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const id = `bai-${crypto.randomUUID()}`;
         files.current.set(id, file);
-        added.push({ id, tableId: activeTable.id, fileName: file.name, size: file.size, status: "waiting" });
+        added.push({ id, tableId: targetTable.id, fileName: file.name, size: file.size, status: "waiting" });
       }
       if (added.length) {
         setSavedTitle(null);
@@ -648,7 +757,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return skipped;
     },
-    [activeTable, hydrated],
+    [targetTable, hydrated],
   );
 
   // Xử lý lần lượt từng bài: chỉ khi không có bài nào đang xử lý mới lấy bài chờ kế tiếp.
@@ -756,8 +865,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Bài mẫu của bản xem thử: chỉ những cột trùng với bài mẫu mới có đề xuất, cột khác để "chưa điền".
   const startSampleReview = useCallback(() => {
     // Chưa đọc xong dữ liệu đã lưu thì chưa biết bảng nào đang mở, tránh lưu nhầm vào bảng mẫu.
-    if (!activeTable || !hydrated) return;
-    const { columns } = activeTable;
+    if (!targetTable || !hydrated) return;
+    const { columns } = targetTable;
     const contentIds = columns.filter((column) => column.kind === "content").map((column) => column.id);
     const cells = sortCells(
       toReviewCells(reviewCells).filter((cell) => contentIds.includes(cell.column)),
@@ -774,7 +883,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const id = `bai-${crypto.randomUUID()}`;
     const session: ReviewSession = {
       id,
-      tableId: activeTable.id,
+      tableId: targetTable.id,
       paper: { ...reviewPaper, id, info: keepInfo(reviewPaper.info), suggested_info: keepInfo(reviewPaper.suggested_info) },
       fileName: null,
       pages: null,
@@ -782,9 +891,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       infoConfirmed: false,
     };
     setSavedTitle(null);
-    setQueue((current) => [...current, { id, tableId: activeTable.id, fileName: "Bài mẫu", size: 0, status: "ready", session, sample: true }]);
+    setQueue((current) => [...current, { id, tableId: targetTable.id, fileName: "Bài mẫu", size: 0, status: "ready", session, sample: true }]);
     setOpenId(id);
-  }, [activeTable, hydrated]);
+  }, [targetTable, hydrated]);
 
   const review = useMemo(() => queue.find((item) => item.id === openId && item.status === "ready")?.session ?? null, [queue, openId]);
 
@@ -874,6 +983,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tables,
       activeTable,
       setActiveTable,
+      targetTable,
+      demoOpen: demo !== null,
+      openDemo,
+      closeDemo,
+      deletePapers,
+      undoDeletePapers,
+      deleteTable,
       createTable,
       addColumn,
       changeColumn,
@@ -914,6 +1030,13 @@ formatCells,
       tables,
       activeTable,
       setActiveTable,
+      targetTable,
+      demo,
+      openDemo,
+      closeDemo,
+      deletePapers,
+      undoDeletePapers,
+      deleteTable,
       createTable,
       addColumn,
       changeColumn,

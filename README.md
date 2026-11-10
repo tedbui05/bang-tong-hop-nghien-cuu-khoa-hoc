@@ -36,5 +36,6 @@ Kịch bản demo nằm ở `docs/kich-ban-demo.md`.
 ## Giới hạn cần biết
 
 - App dùng đăng nhập ẩn danh: sinh viên không cần tạo tài khoản, nhưng dữ liệu gắn với trình duyệt đang dùng. Đổi máy hoặc xoá dữ liệu trình duyệt thì không thấy bảng cũ nữa, nên hãy xuất Excel để giữ bản sao.
+- File PDF chỉ được giữ trong trình duyệt (IndexedDB), không bao giờ gửi lên máy chủ; máy chủ chỉ lưu bảng và chữ đã điền. Đổi máy, đổi trình duyệt hoặc xoá dữ liệu trình duyệt thì nút "Mở bài gốc" sẽ hiện "Tải lại file PDF để xem": chọn lại đúng file của bài (app kiểm tra dấu vân tay SHA-256, sai file thì báo) là xem lại được.
 - Chưa đọc được file scan (PDF chỉ có ảnh).
 - Mỗi người được gửi tối đa 15 bài cho AI mỗi ngày, cả app tối đa 150 bài mỗi ngày (số tạm).

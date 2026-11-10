@@ -4,17 +4,37 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, typ
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { evidenceLabel, evidenceSpokenLabel, evidenceView, NOT_MARKED_NOTE } from "@/lib/evidence";
-import { fileHash, loadPages, savePdf } from "@/lib/paper-files";
+import { fileHash, loadPages, loadPdf, savePdf } from "@/lib/paper-files";
 import type { PdfPage } from "@/lib/pdf-read";
 import { forgetPaperPdf, openPaperPdf, pageSize } from "@/lib/pdf-view";
 import { STATUS_LABELS } from "@/lib/sheet";
+import { pdfTabUrl, type QuoteRef } from "@/lib/paper-viewer";
 import { getLabelKey, type AiCell, type Paper } from "@/lib/types";
 import { PageTextView } from "./PageTextView";
 import { PdfPageView } from "./PdfPageView";
 import { StatusIcon } from "./StatusBadge";
 
 // page: trang muốn mở, chỉ dùng cho ô "cần kiểm tra" vì câu có ở nhiều trang. Bỏ trống thì mở trang mặc định.
-export type EvidenceTarget = { paper: Paper; cell: AiCell; columnName: string; pages?: PdfPage[] | null; page?: number };
+// quotes: các câu trích của bài, để bấm nhảy tới khi xem cả bài (nút "Mở bài gốc").
+export type EvidenceTarget = { paper: Paper; cell: AiCell; columnName: string; pages?: PdfPage[] | null; page?: number; quotes?: QuoteRef[] };
+
+// Ô giả dùng khi mở cả bài từ dòng của bảng: chưa chọn câu trích nào, mở ở trang 1, không tô.
+export const WHOLE_PAPER_COLUMN = "__ca-bai";
+const WHOLE_PAPER_CELL: AiCell = {
+  column: WHOLE_PAPER_COLUMN,
+  value_vi: "",
+  quote_original: null,
+  quote_vi: null,
+  page: null,
+  status: "manual",
+  check: null,
+  ai_page: null,
+};
+
+// Đích mở cả bài (biểu tượng tài liệu ở dòng, mục "Mở bài gốc" trong menu chuột phải).
+export function paperTarget(paper: Paper, quotes: QuoteRef[], pages?: PdfPage[] | null): EvidenceTarget {
+  return { paper, cell: WHOLE_PAPER_CELL, columnName: "Cả bài", quotes, pages };
+}
 
 type Mode = "hover" | "focus" | "click";
 type PreviewState = { target: EvidenceTarget; anchor: HTMLElement; mode: Mode; fullscreen: boolean };
@@ -91,7 +111,14 @@ export function useEvidencePreview() {
         if (now && now.anchor === anchor && now.mode === "click") set(null);
         else set({ target, anchor, mode: "click", fullscreen: false });
       },
+      // Mở thẳng chế độ xem cả bài (nút "Mở bài gốc").
+      openFull(target: EvidenceTarget, anchor: HTMLElement) {
+        clearTimers();
+        set({ target, anchor, mode: "click", fullscreen: true });
+      },
       fullscreen(on: boolean) {
+        // Huỷ hẹn giờ đóng của lúc rê chuột, kẻo nó đóng luôn khung xem cả bài vừa mở.
+        clearTimers();
         const now = current.current;
         if (now) set({ ...now, fullscreen: on, mode: on ? "click" : now.mode });
       },
@@ -100,19 +127,28 @@ export function useEvidencePreview() {
         const now = current.current;
         set(null);
         if (!returnFocus || !now) return;
-        // Bảng có thể đã vẽ lại ô (nhãn cũ bị thay): tìm nhãn mới của cùng ô.
-        const anchor = now.anchor.isConnected
-          ? now.anchor
-          : document.querySelector<HTMLElement>(
-              `.ev-chip[data-paper="${CSS.escape(now.target.paper.id)}"][data-column="${CSS.escape(now.target.cell.column)}"]`,
-            );
-        if (!anchor) return;
-        returning.current = anchor;
-        anchor.focus({ preventScroll: true });
-        // Nếu focus không gây sự kiện (nhãn đã đang được focus) thì bỏ cờ.
-        setTimeout(() => {
-          if (returning.current === anchor) returning.current = null;
-        }, 0);
+        const giveBack = () => {
+          // Bảng có thể đã vẽ lại ô (nhãn cũ bị thay): tìm nhãn mới của cùng ô, hoặc nút mở bài gốc của cùng dòng.
+          const paper = CSS.escape(now.target.paper.id);
+          const anchor = now.anchor.isConnected
+            ? now.anchor
+            : document.querySelector<HTMLElement>(
+                now.target.cell.column === WHOLE_PAPER_COLUMN
+                  ? `.sheet-open-pdf[data-paper="${paper}"]`
+                  : `.ev-chip[data-paper="${paper}"][data-column="${CSS.escape(now.target.cell.column)}"]`,
+              );
+          if (!anchor) return;
+          returning.current = anchor;
+          anchor.focus({ preventScroll: true });
+          // Nếu focus không gây sự kiện (nhãn đã đang được focus) thì bỏ cờ.
+          setTimeout(() => {
+            if (returning.current === anchor) returning.current = null;
+          }, 0);
+        };
+        // Khung xem cả bài là hộp thoại modal: khi nó còn mở, trình duyệt không cho focus ra ngoài.
+        // Đợi hộp thoại đóng hẳn rồi mới trả focus.
+        if (now.fullscreen) setTimeout(giveBack, 0);
+        else giveBack();
       },
       isOpenFor(anchor: HTMLElement) {
         return current.current?.anchor === anchor;
@@ -400,7 +436,7 @@ function EvidencePopover({ state, preview }: { state: PreviewState; preview: Evi
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />
             </svg>
-            Mở toàn màn hình
+            Mở bài gốc
           </button>
           <button type="button" className="ev-pop__button ev-pop__close" aria-label="Đóng khung xem trước (Esc)" onClick={() => preview.close(true)}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -535,7 +571,14 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
   }
 
   let body: ReactNode;
-  if (pages && view.page !== null) {
+  if (target.cell.column === WHOLE_PAPER_COLUMN) {
+    body = (
+      <p className="ev-pop__note">
+        File PDF gốc không còn trong trình duyệt này (ví dụ đã đổi máy hoặc xoá dữ liệu trình duyệt). File chỉ được giữ trên
+        trình duyệt, không lưu lên máy chủ. Hãy chọn lại đúng file của bài để xem.
+      </p>
+    );
+  } else if (pages && view.page !== null) {
     body = (
       <>
         <p className="ev-pop__note">File PDF gốc không còn trong trình duyệt này. Đang hiện chữ của trang đọc từ file lúc tải lên.</p>
@@ -562,7 +605,7 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
       {body}
       <div className="ev-pop__reupload">
         <button type="button" className="button button--secondary" disabled={busy} onClick={() => input.current?.click()}>
-          Tải lại file PDF để xem bản gốc
+          Tải lại file PDF để xem
         </button>
         <input
           ref={input}
@@ -586,10 +629,35 @@ function MissingPdf({ target, pages, onReloaded }: { target: EvidenceTarget; pag
   );
 }
 
+// Bản sao file PDF trong trình duyệt (blob:) để mở bằng trình xem PDF của trình duyệt. Thu hồi khi đóng khung xem.
+function usePdfObjectUrl(paperId: string, ready: boolean): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    let alive = true;
+    let made: string | null = null;
+    void loadPdf(paperId).then((stored) => {
+      if (!alive || !stored) return;
+      made = URL.createObjectURL(stored.blob);
+      setUrl(made);
+    });
+    return () => {
+      alive = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [paperId, ready]);
+  return url;
+}
+
 // Toàn màn hình: cả bài, mở sẵn ở trang có câu trích, vẫn tô vàng, phóng to thu nhỏ, chuyển trang, Esc để thoát.
 function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () => void }) {
-  const view = evidenceView(target.cell, target.page);
-  const { loaded } = usePaperPdf(target);
+  // Câu trích đang tô. Mở cả bài từ dòng của bảng thì chưa chọn câu nào (ô giả, trang 1).
+  const [selected, setSelected] = useState<{ cell: AiCell; page?: number }>({ cell: target.cell, page: target.page });
+  const view = evidenceView(selected.cell, selected.page);
+  const wholePaper = selected.cell.column === WHOLE_PAPER_COLUMN;
+  const quotes = target.quotes ?? [];
+  const { loaded, reload } = usePaperPdf(target);
+  const tabUrl = usePdfObjectUrl(target.paper.id, loaded.kind === "pdf");
   const dialog = useRef<HTMLDialogElement | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const [sizes, setSizes] = useState<{ width: number; height: number }[] | null>(null);
@@ -689,6 +757,13 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
     setCurrentPage(target);
   }
 
+  // Bấm một câu trong danh sách: tô câu đó và nhảy tới trang của nó (khi trang vẽ xong thì tự cuộn tới chỗ tô).
+  function selectQuote(quote: QuoteRef) {
+    setSelected({ cell: quote.cell });
+    const page = evidenceView(quote.cell).page;
+    if (page) goTo(page);
+  }
+
   const onMark = useCallback((mark: HTMLElement | null) => {
     const element = scroller.current;
     if (!element || !mark) return;
@@ -709,10 +784,12 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
     >
       <header className="pdf-full__bar">
         <div className="pdf-full__title">
-          <span className={`ev-chip ev-chip--${view.label} ev-chip--static`}>
-            <StatusIcon label={view.label} />
-            {evidenceLabel(target.cell, target.page) ?? STATUS_LABELS[view.label]}
-          </span>
+          {wholePaper ? null : (
+            <span className={`ev-chip ev-chip--${view.label} ev-chip--static`}>
+              <StatusIcon label={view.label} />
+              {evidenceLabel(selected.cell, selected.page) ?? STATUS_LABELS[view.label]}
+            </span>
+          )}
           <span className="source-text pdf-full__paper" lang={target.paper.language_code} translate="no">
             {target.paper.info.title}
           </span>
@@ -736,11 +813,37 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
             </button>
           </span>
           <ZoomButtons zoom={zoom} onZoom={setZoom} />
+          {tabUrl ? (
+            // Trình xem PDF của trình duyệt: tự tìm, in hoặc tải file. File lấy từ trình duyệt, không qua máy chủ.
+            <a className="ev-pop__button" href={pdfTabUrl(tabUrl, currentPage)} target="_blank" rel="noopener">
+              Mở trong tab mới
+            </a>
+          ) : null}
           <button type="button" className="ev-pop__button" onClick={onExit}>
             Thoát <kbd>Esc</kbd>
           </button>
         </div>
       </header>
+      {quotes.length ? (
+        <details className="pdf-full__quotes" open={!isPhone()}>
+          <summary>Câu trích của bài ({quotes.length})</summary>
+          <ul>
+            {quotes.map((quote) => {
+              const quoteView = evidenceView(quote.cell);
+              const current = quote.cell.column === selected.cell.column;
+              return (
+                <li key={quote.cell.column}>
+                  <button type="button" className="pdf-full__quote" aria-current={current ? "true" : undefined} onClick={() => selectQuote(quote)}>
+                    <StatusIcon label={quoteView.label} />
+                    <span className="pdf-full__quote-column">{quote.columnName}</span>
+                    <span className="pdf-full__quote-page">tr. {quoteView.page}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ) : null}
       {view.note ? <p className={view.label === "needs_review" ? "ev-pop__note ev-pop__note--warn pdf-full__note" : "ev-pop__note pdf-full__note"}>{view.note}</p> : null}
       <div ref={scroller} className="pdf-full__scroll" tabIndex={0} aria-label="Các trang của file PDF">
         {failed ? (
@@ -752,7 +855,7 @@ function PdfFullscreen({ target, onExit }: { target: EvidenceTarget; onExit: () 
             <span className="spinner" aria-hidden="true" /> Đang mở file PDF…
           </p>
         ) : loaded.kind === "missing" ? (
-          <p className="ev-pop__note">File PDF không còn trong trình duyệt này.</p>
+          <MissingPdf target={{ ...target, cell: selected.cell, page: selected.page }} pages={loaded.pages} onReloaded={reload} />
         ) : (
           sizes!.map((size, index) => {
             const page = index + 1;

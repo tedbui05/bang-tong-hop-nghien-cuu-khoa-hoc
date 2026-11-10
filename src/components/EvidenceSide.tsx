@@ -14,6 +14,8 @@ type Props = {
   // Điện thoại: khung đang mở (trượt lên từ dưới). Máy tính luôn hiện ở bên phải.
   open: boolean;
   onClose: () => void;
+  // Nút "Mở bài gốc": xem cả file PDF ở trang có câu trích, có tô vàng.
+  onOpenPaper?: (anchor: HTMLElement) => void;
 };
 
 function isSmall() {
@@ -21,7 +23,7 @@ function isSmall() {
 }
 
 // Khung bên phải trang duyệt: chữ của trang có câu trích, câu trích được tô vàng.
-export function EvidenceSide({ cell, columnName, pages, lang, open, onClose }: Props) {
+export function EvidenceSide({ cell, columnName, pages, lang, open, onClose, onOpenPaper }: Props) {
   const view = evidenceView(cell);
 
   // Điện thoại: khoá cuộn trang phía sau khi khung đang mở.
@@ -53,6 +55,11 @@ export function EvidenceSide({ cell, columnName, pages, lang, open, onClose }: P
         <div>
           <p className="review-side__eyebrow">Đoạn gốc trong bài</p>
           <h2>{columnName}</h2>
+          {onOpenPaper && view.page !== null ? (
+            <button type="button" className="link-button evidence-panel__open" onClick={(event) => onOpenPaper(event.currentTarget)}>
+              Mở bài gốc
+            </button>
+          ) : null}
         </div>
         <button type="button" className="evidence-panel__close review-side__close" aria-label="Đóng khung chữ của trang" onClick={onClose}>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">

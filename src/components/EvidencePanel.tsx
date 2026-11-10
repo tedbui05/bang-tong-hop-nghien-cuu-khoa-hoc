@@ -2,17 +2,20 @@
 
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cellText, isInfoEdited, TITLE_COLUMN_ID } from "@/lib/columns";
+import { evidenceView } from "@/lib/evidence";
 import { TAG_COLORS, type TagColorKey } from "@/lib/palette";
 import { STATUS_LABELS } from "@/lib/sheet";
 import { useStore, type CellTarget } from "@/lib/store";
 import { CITED_SOURCE_WARNING } from "@/lib/cited-source";
 import { filledByText, getLabelKey, getReviewReason, isCellEdited, type Highlight, type LabelKey, type ReviewCell, type SavedPaper, type TableColumn, type TableTag } from "@/lib/types";
-import { EvidenceChip, PageMatchButtons, type EvidencePreviewApi } from "./EvidencePreview";
+import { EvidenceChip, PageMatchButtons, paperTarget, type EvidencePreviewApi } from "./EvidencePreview";
+import type { QuoteRef } from "@/lib/paper-viewer";
 import { HighlightText, useTextSelection } from "./HighlightText";
 import { MarkdownView } from "./MarkdownView";
 import { StatusIcon } from "./StatusBadge";
 
-export type EvidenceSelection = { paper: SavedPaper; cell: ReviewCell | undefined; column: TableColumn; count: number };
+// quotes: các câu trích của bài, cho khung xem cả bài (nút "Mở bài gốc").
+export type EvidenceSelection = { paper: SavedPaper; cell: ReviewCell | undefined; column: TableColumn; count: number; quotes: QuoteRef[] };
 
 type PanelProps = { selection: EvidenceSelection; tags: TableTag[]; formatBar: ReactNode; onClose: () => void; preview: EvidencePreviewApi };
 
@@ -40,6 +43,21 @@ export function EvidencePanel({ selection, tags, formatBar, onClose, preview }: 
               {paper.info.title}
             </p>
           ) : null}
+          <button
+            type="button"
+            className="link-button evidence-panel__open"
+            onClick={(event) => {
+              // Ô có câu trích: mở đúng trang có câu đó, có tô vàng. Ô khác: mở cả bài ở trang 1.
+              const cell = selection.cell;
+              const target =
+                cell && evidenceView(cell).page !== null
+                  ? { paper, cell, columnName: column.name, quotes: selection.quotes }
+                  : paperTarget(paper, selection.quotes);
+              preview.openFull(target, event.currentTarget);
+            }}
+          >
+            Mở bài gốc
+          </button>
         </div>
         <button type="button" className="evidence-panel__close" aria-label="Đóng khung chi tiết (Esc)" title="Đóng (Esc)" onClick={onClose}>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
